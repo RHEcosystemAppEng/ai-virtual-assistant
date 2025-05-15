@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent, JSX } from 'react';
 import axios from '../api/axios';
 
 interface Message {
@@ -11,6 +11,13 @@ interface Model {
   name: string;
 }
 
+interface VirtualAssistant {
+  id: string;
+  name: string;
+  prompt: string;
+  model_name: string;
+}
+
 export default function ChatPage(): JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -18,6 +25,9 @@ export default function ChatPage(): JSX.Element {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [error, setError] = useState<Error | null>(null);
+  const [virtualAssistants, setVirtualAssistants] = useState<VirtualAssistant[]>([]);
+  const [selectedAssistant, setSelectedAssistant] = useState<string>('');
+  const [sessionId, setSessionId] = useState<string>('');
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -37,6 +47,26 @@ export default function ChatPage(): JSX.Element {
       }
     };
     fetchModels();
+  }, []);
+
+  // Fetch available virtual assistants on component mount
+  useEffect(() => {
+    const fetchVirtualAssistants = async () => {
+      try {
+        const response = await axios.get('/virtual_assistants/');
+        const vas = response.data as VirtualAssistant[];
+        if (vas && vas.length > 0) {
+          setVirtualAssistants(vas);
+          setSelectedAssistant(vas[0].id);
+        }
+      } catch (err) {
+        console.error('Error fetching models:', err);
+        setError(new Error('Failed to load LLM models'));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchVirtualAssistants();
   }, []);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -66,11 +96,13 @@ export default function ChatPage(): JSX.Element {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'SessionId': sessionId
         },
         body: JSON.stringify({
-          model: selectedModel,
+          virtualAssistantId: selectedAssistant,
           messages: updatedMessages,
-          stream: true
+          stream: true,
+          sessionId: sessionId
         })
       });
 
@@ -100,18 +132,32 @@ export default function ChatPage(): JSX.Element {
                 break;
               } else if (text.trim().startsWith('Error:')) {
                 throw new Error(text.trim().slice(7));
-              } else if (text) {
-                // Add space after sentence endings if next chunk doesn't start with space
-                if (buffer.match(/[.!?]$/) && text && !text.startsWith(' ')) buffer += ' ';
-                buffer += text;
-                setMessages(prev => {
-                  const newMessages = [...prev];
-                  const lastMessage = newMessages[newMessages.length - 1];
-                  if (lastMessage && lastMessage.role === 'assistant') {
-                    lastMessage.content = buffer;
-                  }
-                  return newMessages;
-                });
+              } else {
+                let json;
+                try {
+                  json = JSON.parse(text);
+                } catch (e) {
+                  console.error('Error parsing JSON:', e);
+                  console.log('Skipped processing text:', text);
+                  continue
+                }
+                if (json.type === 'session' && json.sessionId) {
+                  setSessionId(json.sessionId);
+                }
+                if (json.type === 'text' && json.content) {
+                  const text = json.content;
+                  // Add space after sentence endings if next chunk doesn't start with space
+                  if (buffer.match(/[.!?]$/) && text && !text.startsWith(' ')) buffer += ' ';
+                  buffer += text;
+                  setMessages(prev => {
+                    const newMessages = [...prev];
+                    const lastMessage = newMessages[newMessages.length - 1];
+                    if (lastMessage && lastMessage.role === 'assistant') {
+                      lastMessage.content = buffer;
+                    }
+                    return newMessages;
+                  });
+                }
               }
             }
           }
@@ -140,14 +186,14 @@ export default function ChatPage(): JSX.Element {
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-4 text-center">Chat with LlamaStack</h1>
         <select
-          value={selectedModel}
-          onChange={(e) => setSelectedModel(e.target.value)}
+          value={selectedAssistant}
+          onChange={(e) => setSelectedAssistant(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
           disabled={isLoading}
         >
-          {availableModels.map((model: Model, index: number) => (
-            <option key={model.id} value={model.id}>
-              {model.name || model.id}
+          {virtualAssistants.map((assistant: VirtualAssistant, index: number) => (
+            <option key={assistant.id} value={assistant.id}>
+              {assistant.name || assistant.id}
             </option>
           ))}
         </select>
