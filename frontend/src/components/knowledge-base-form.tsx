@@ -23,7 +23,6 @@ import {
   InputGroup,
 } from '@patternfly/react-core';
 import { EditIcon, EllipsisVIcon, TrashIcon } from '@patternfly/react-icons';
-// import axios from '../../../admin/src/api/axios';
 import baseUrl from '../config/api';
 
 export interface KnowledgeBase {
@@ -81,32 +80,54 @@ export const FormBasic: React.FunctionComponent = () => {
     }
   }, [s3Inputs, githubInputs, urlInputs, form.source]);
 
- 
+  const fetchKbs = async () => {
+    try {
+      const response = await fetch(`${baseUrl}/knowledge_bases/`);
+      const data = await response.json();
 
-    // Fetch available models on mount
-    useEffect(() => {
-      const fetchKbs = async () => {
-        try {
-          const response = await fetch(`${baseUrl}/knowledge_bases`);
-          const kbs = await response.json();
-           
-          setKbs(kbs);
-         
-        } catch (err) {
-          console.error('Error fetching models:', err);
-        }
-      };
-      fetchKbs();
-    }, []);
+      setKbs(data);
+    } catch (err) {
+      console.error('Error fetching knowledge bases:', err);
+    }
+  };
+
+  useEffect(() => {
+    const fetchKbs = async () => {
+      try {
+        const response = await fetch(`${baseUrl}/knowledge_bases/`);
+        const data = await response.json();
+
+        setKbs(data);
+      } catch (err) {
+        console.error('Error fetching knowledge bases:', err);
+      }
+    };
+    fetchKbs()
+      .catch((err) => console.error(err))
+      .then(() => console.log('kbs base'))
+      .catch(() => 'obligatory catch');
+  }, []);
 
   const handleSubmit = async () => {
     try {
       const parsedConfig = JSON.parse(form.source_configuration || '{}');
       const payload = { ...form, source_configuration: parsedConfig };
       if (form.id) {
-        await axios.put(`/knowledge_bases/${form.id}`, payload);
+        await fetch(`${baseUrl}/knowledge_bases/${form.id}/`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
       } else {
-        await axios.post('/knowledge_bases', payload);
+        await fetch(`${baseUrl}/knowledge_bases/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
       }
       console.log(payload);
       setForm({
@@ -128,16 +149,16 @@ export const FormBasic: React.FunctionComponent = () => {
       });
       setGithubInputs({ url: '', path: '', token: '', branch: '' });
       setUrlInputs(['']);
-      fetchKbs();
+      fetchKbs()
+        .catch((err) => console.log(err))
+        .then(() => console.log('called fetchKbs'))
+        .catch(() => 'obligatory catch');
+      window.location.reload();
     } catch (err) {
       alert('Invalid JSON in source configuration field.');
+      console.error(err);
     }
   };
-
-  // const handleDelete = async (id: string) => {
-  //   await axios.delete(`/knowledge_bases/${id}`);
-  //   void fetchKbs();
-  // };
 
   // const handleEdit = (kb: KnowledgeBase) => {
   //   setForm({ ...kb, source_configuration: JSON.stringify(kb.source_configuration, null, 2) });
@@ -384,7 +405,7 @@ export const FormBasic: React.FunctionComponent = () => {
         />
       </FormGroup>
       <ActionGroup>
-        <Button variant="primary" onClick={() => void handleSubmit()}>
+        <Button variant="primary" onClick={() => handleSubmit()}>
           Create
         </Button>
         <Button variant="link">Cancel</Button>
@@ -397,6 +418,7 @@ export function KnowledgeBaseForm() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   //   const [isToggleRightAligned, setIsToggleRightAligned] = useState<boolean>(false);
+  const [id, setId] = useState<string>('');
 
   const onSelect = () => {
     setIsOpen(!isOpen);
@@ -404,15 +426,31 @@ export function KnowledgeBaseForm() {
 
   const onExpand = (_event: React.MouseEvent, id: string) => {
     console.log(id);
+    setId(id);
     setIsExpanded(!isExpanded);
   };
+
+  async function handleDelete(id: string) {
+    await fetch(`${baseUrl}/knowledge_bases/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  }
 
   const dropdownItems = (
     <>
       <DropdownItem icon={<EditIcon />} value={0} key="edit">
         Edit
       </DropdownItem>
-      <DropdownItem isDanger icon={<TrashIcon />} value={1} key="delete">
+      <DropdownItem
+        isDanger
+        icon={<TrashIcon />}
+        value={1}
+        key="delete"
+        onClick={() => handleDelete(id)}
+      >
         Delete
       </DropdownItem>
     </>

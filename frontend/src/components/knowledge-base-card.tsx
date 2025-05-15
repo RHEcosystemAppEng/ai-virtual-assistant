@@ -16,6 +16,7 @@ import {
   ListItem,
 } from '@patternfly/react-core';
 import { EditIcon, EllipsisVIcon, TrashIcon } from '@patternfly/react-icons';
+import baseUrl from '../config/api';
 
 interface KnowledgeBaseCardProps {
   knowledgeBase: KnowledgeBase;
@@ -36,12 +37,28 @@ export function KnowledgeBaseCard({ knowledgeBase }: KnowledgeBaseCardProps) {
     setIsExpanded(!isExpanded);
   };
 
+  async function handleDelete(id: string) {
+    await fetch(`${baseUrl}/knowledge_bases/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    window.location.reload();
+  }
+
   const dropdownItems = (
     <>
       <DropdownItem icon={<EditIcon />} value={0} key="edit">
         Edit
       </DropdownItem>
-      <DropdownItem isDanger icon={<TrashIcon />} value={1} key="delete">
+      <DropdownItem
+        isDanger
+        icon={<TrashIcon />}
+        value={1}
+        key="delete"
+        onClick={() => handleDelete(knowledgeBase.id)}
+      >
         Delete
       </DropdownItem>
     </>
