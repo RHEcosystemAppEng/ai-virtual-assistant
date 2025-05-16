@@ -41,9 +41,91 @@ class Chat:
         self.session_state = {}
         self.session_state["agent_type"] = AgentType.REGULAR
         self.session_state["messages"] = []
-        # TODO: Get the virtual assistant from the database
+        self.components = None
+        
+    async def _fetch_components(self, db):
+        """Fetch the model server, knowledge base, and tools for this virtual assistant."""
+        from sqlalchemy import select
+        from ..models import VirtualAssistant, ModelServer, VirtualAssistantKnowledgeBase, KnowledgeBase, VirtualAssistantTool, MCPServer
+        
+        try:
+            # Get the virtual assistant
+            result = await db.execute(select(VirtualAssistant).where(VirtualAssistant.id == self.virtual_assistant_id))
+            db_va = result.scalar_one_or_none()
+            if not db_va:
+                raise ValueError(f"Virtual assistant with ID {self.virtual_assistant_id} not found")
 
-        #self.logger = logger
+            # Get the model server
+            model_result = await db.execute(
+                select(ModelServer).where(ModelServer.model_name == db_va.model_name)
+            )
+            model_server = model_result.scalar_one_or_none()
+            if not model_server:
+                raise ValueError(f"Model server for model {db_va.model_name} not found")
+
+            # Get knowledge bases
+            kb_result = await db.execute(
+                select(VirtualAssistantKnowledgeBase)
+                .where(VirtualAssistantKnowledgeBase.virtual_assistant_id == self.virtual_assistant_id)
+            )
+            kb_relations = kb_result.scalars().all()
+            kb_ids = [r.knowledge_base_id for r in kb_relations]
+            
+            kb_details = []
+            for kb_id in kb_ids:
+                kb_detail = await db.execute(
+                    select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
+                )
+                kb = kb_detail.scalar_one_or_none()
+                if kb:
+                    kb_details.append({
+                        "id": str(kb.id),
+                        "name": kb.name,
+                        "version": kb.version,
+                        "embedding_model": kb.embedding_model,
+                        "vector_db_name": kb.vector_db_name,
+                        "is_external": kb.is_external,
+                        "source": kb.source,
+                        "source_configuration": kb.source_configuration
+                    })
+
+            # Get MCP servers (tools)
+            mcp_result = await db.execute(
+                select(VirtualAssistantTool)
+                .where(VirtualAssistantTool.virtual_assistant_id == self.virtual_assistant_id)
+            )
+            mcp_relations = mcp_result.scalars().all()
+            mcp_ids = [r.mcp_server_id for r in mcp_relations]
+            
+            mcp_details = []
+            for mcp_id in mcp_ids:
+                mcp_detail = await db.execute(
+                    select(MCPServer).where(MCPServer.id == mcp_id)
+                )
+                mcp = mcp_detail.scalar_one_or_none()
+                if mcp:
+                    mcp_details.append({
+                        "id": str(mcp.id),
+                        "name": mcp.name,
+                        "title": mcp.title,
+                        "description": mcp.description,
+                        "endpoint_url": mcp.endpoint_url,
+                        "configuration": mcp.configuration
+                    })
+
+            self.components = {
+                "model_server": {
+                    "id": str(model_server.id) if model_server else None,
+                    "name": model_server.name if model_server else None,
+                    "provider_name": model_server.provider_name if model_server else None,
+                    "model_name": model_server.model_name if model_server else None,
+                    "endpoint_url": model_server.endpoint_url if model_server else None
+                },
+                "knowledge_bases": kb_details,
+                "tools": mcp_details
+            }
+        except Exception as e:
+            raise ValueError(f"Failed to fetch components: {str(e)}")
         
     def _reset_agent(self):
         self.session_state.clear()
@@ -54,35 +136,41 @@ class Chat:
         return client
 
     def _get_tools(self):
-        # get the list of tools from the 
-        # tool_groups = self._get_client().toolgroups.list()
-        # tool_groups_list = [tool_group.identifier for tool_group in tool_groups]
-        # mcp_tools_list = [tool for tool in tool_groups_list if tool.startswith("mcp::")]
-        # builtin_tools_list = [tool for tool in tool_groups_list if not tool.startswith("mcp::")]
-
-        # toolgroup_selection = tool_groups_list
-        # selected_vector_dbs = self._get_client().vector_dbs.list() or []
-
-        # for i, tool_name in enumerate(toolgroup_selection):
-        #     if tool_name == "builtin::rag":
-        #         tool_dict = dict(
-        #             name="builtin::rag",
-        #             args={
-        #                 "vector_db_ids": list(selected_vector_dbs),
-        #             },
-        #         )
-        #         toolgroup_selection[i] = tool_dict
-
-        # return toolgroup_selection
-        return []
-
+        if not self.components:
+            return []
+            
+        tool_groups = self._get_client().toolgroups.list()
+        tool_groups_list = [tool_group.identifier for tool_group in tool_groups]
+        
+        # Get MCP tools from components
+        mcp_tools_list = [tool["name"] for tool in self.components["tools"]]
+        
+        if not mcp_tools_list:
+            return []
+            
+        # Check if builtin::rag is in the tool groups and we have knowledge bases
+        if "builtin::rag" in tool_groups_list and self.components["knowledge_bases"]:
+            vector_db_ids = [kb["vector_db_name"] for kb in self.components["knowledge_bases"]]
+            
+            rag_tool = {
+                "name": "builtin::rag",
+                "args": {
+                    "vector_db_ids": vector_db_ids,
+                },
+            }
+            
+            return mcp_tools_list + [rag_tool]
+        
+        # If no builtin::rag, just return MCP tools
+        return mcp_tools_list
 
     def _get_model(self):
-        
-        models = self._get_client().models.list()
-        model_list = [model.identifier for model in models if model.api_model_type == "llm"]
-        return model_list[0]
-
+        if not self.components or not self.components["model_server"]:
+            models = self._get_client().models.list()
+            model_list = [model.identifier for model in models if model.api_model_type == "llm"]
+            return model_list[0]
+            
+        return self.components["model_server"]["model_name"]
 
     def _create_agent(self, 
                     agent_type: AgentType,
@@ -110,11 +198,13 @@ class Chat:
                 sampling_params={"strategy": {"type": "greedy"}, "max_tokens": max_tokens},
             )
 
-    def _response_generator(self, turn_response):
+    async def _response_generator(self, turn_response):
         if self.session_state.get("agent_type") == AgentType.REACT:
-            return self._handle_react_response(turn_response)
+            async for response in self._handle_react_response(turn_response):
+                yield response
         else:
-            return self._handle_regular_response(turn_response)
+            async for response in self._handle_regular_response(turn_response):
+                yield response
 
     def _handle_react_response(self, turn_response):
         current_step_content = ""
@@ -273,8 +363,8 @@ class Chat:
                 if isinstance(first_value, str) and len(first_value) < 100:
                     yield f"- {first_value}\n"
 
-    def _handle_regular_response(self, turn_response):
-        for response in turn_response:
+    async def _handle_regular_response(self, turn_response):
+        async for response in turn_response:
             if hasattr(response.event, "payload"):
                 print(response.event.payload)
                 if response.event.payload.event_type == "step_progress":
@@ -290,7 +380,11 @@ class Chat:
             else:
                 yield f"Error occurred in the Llama Stack Cluster: {response}"
 
-    def stream(self, prompt: str):
+    async def stream(self, prompt: str, db):
+        # Fetch components if not already fetched
+        if not self.components:
+            await self._fetch_components(db)
+            
         agent_type = AgentType.REGULAR
         self.session_state["agent_type"] = agent_type
         max_tokens = 512 # 4096
@@ -300,17 +394,13 @@ class Chat:
 
         session_id = self.session_state["agent_session_id"]
 
-        # if "messages" not in self.session_state:
-        #     self.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
-
-        # self.session_state.messages.append({"role": "user", "content": prompt})
         turn_response = agent.create_turn(
             session_id=session_id,
             messages=[{"role": "user", "content": prompt}],
             stream=True,
         )
 
-        # self.session_state.messages.append({"role": "assistant", "content": response})
-        yield from self._response_generator(turn_response)
+        async for response in self._response_generator(turn_response):
+            yield response
         
         

@@ -27,9 +27,33 @@ export default function VirtualAssistantPage() {
 
   useEffect(() => {
     // Fetch models from LlamaStack
-    axios.get('/llama_stack/llms').then(res => setModels(res.data));
-    axios.get('/knowledge_bases').then(res => setKnowledgeBases(res.data));
-    axios.get('/mcp_servers').then(res => setMcpServers(res.data));
+    axios.get('/llama_stack/llms')
+      .then(res => {
+        console.log('Models response:', res.data);
+        setModels(res.data);
+      })
+      .catch(err => {
+        console.error('Error fetching models:', err);
+        alert('Failed to fetch models: ' + err.message);
+      });
+    axios.get('/llama_stack/knowledge_bases')
+      .then(res => {
+        console.log('Knowledge bases response:', res.data);
+        setKnowledgeBases(res.data);
+      })
+      .catch(err => {
+        console.error('Error fetching knowledge bases:', err);
+        alert('Failed to fetch knowledge bases: ' + err.message);
+      });
+    axios.get('/llama_stack/mcp_servers')
+      .then(res => {
+        console.log('MCP servers response:', res.data);
+        setMcpServers(res.data);
+      })
+      .catch(err => {
+        console.error('Error fetching MCP servers:', err);
+        alert('Failed to fetch MCP servers: ' + err.message);
+      });
     fetchAssistants();
   }, []);
 

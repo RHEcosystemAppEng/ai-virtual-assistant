@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.monitor.name }}
+  namespace: {{ .Values.namespace }}
   labels:
     app: {{ .Values.monitor.name }}
 spec:
@@ -90,7 +91,7 @@ spec:
                   kind: Secret
                   metadata:
                     name: s3-config-{kb_name}
-                    namespace: rag-llama-demo
+                    namespace: {{ .Values.namespace }}
                   type: Opaque
                   stringData:
                     SOURCE: "S3"
@@ -129,7 +130,7 @@ spec:
                   apiVersion: batch/v1
                   metadata:
                     name: ingestion-pipeline-{kb_name}
-                    namespace: rag-llama-demo
+                    namespace: {{ .Values.namespace }}
                     labels:
                       pipelines.kubeflow.org/v2_component: 'true'
                   spec:
@@ -175,9 +176,9 @@ spec:
                               - /bin/bash
                             env:
                               - name: LLAMASTACK_BASE_URL
-                                value: 'http://llamastack.rag-llama-demo.svc.cluster.local:8321'
+                                value: 'http://llamastack.{{ .Values.namespace }}.svc.cluster.local:8321'
                               - name: DS_PIPELINE_URL
-                                value: 'https://ds-pipeline-dspa.rag-llama-demo.svc.cluster.local:8888'
+                                value: 'https://ds-pipeline-dspa.{{ .Values.namespace }}.svc.cluster.local:8888'
                             envFrom:
                               - secretRef:
                                   name: s3-config-{kb_name}
