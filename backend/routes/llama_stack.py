@@ -7,14 +7,21 @@ from typing import List, Dict, Any, AsyncGenerator, Literal, Optional, AsyncIter
 import logging
 from pydantic import BaseModel
 import json
+from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from backend.models import VirtualAssistant, VirtualAssistantTool, VirtualAssistantKnowledgeBase, KnowledgeBase
+from sqlalchemy.dialects.postgresql import insert
+from backend.models import VirtualAssistant, VirtualAssistantTool, VirtualAssistantKnowledgeBase, KnowledgeBase, ChatSession
 from backend.database import get_db
 from uuid import UUID
 import time
 from .chat import Chat
 from ..api.llamastack import client
+from .. import models
+from uuid import uuid4
+from fastapi import BackgroundTasks
+from ..database import SessionLocal
+
 
 class Message(BaseModel):
     role: Literal['user', 'assistant', 'system']
@@ -156,59 +163,84 @@ async def get_shields():
         raise HTTPException(status_code=500, detail=str(e))
 
 class ChatRequest(BaseModel):
-    model: str
+    virtualAssistantId: str
     messages: list[Message]
     stream: bool = False
-
-class VAChatRequest(BaseModel):
-    messages: List[VAChatMessage]
-    virtualAssistantId: str
     sessionId: Optional[str] = None
-    agentId: Optional[str] = None
 
 @router.post("/chat")
-def chat(request: ChatRequest):
+async def chat(request: ChatRequest, background_task: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     """Chat endpoint that streams responses from LlamaStack"""
     try:
-        log.info(f"Received request: {request.dict()}")
-        # Get the list of available LLM model
-        models = client.models.list()
-        llm_model = None
+        log.info(f"Received request: {request.model_dump()}")
+        # Get the list of available virtual assistants from the database
+        result = await db.execute(select(models.VirtualAssistant))
+        assistants = result.scalars().all()
+        selectedAssistant = VirtualAssistant()
         
-        # If the requested model is available, use it
-        for model in models:
-            if model.model_type == "llm":
-                if model.identifier == request.model:
-                    llm_model = model
-                    break
+        # If the requested virtual assistant is available, use it
+        for va in assistants:
+            log.info(f"Requested virtual assistant: {request.virtualAssistantId}")
+            log.info(f"Processing virtual assistant: {va.id}")
+            if str(va.id) == request.virtualAssistantId:
+                log.info(f"Found virtual assistant: {va.id}")
+                selectedAssistant = va
+                break
 
-        if not llm_model:
+        if not selectedAssistant:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No LLM model available"
+                detail=f"Requested virtual assistant {request.virtualAssistantId} not available"
             )
 
         log.info(f"Processing messages: {request.messages}")
-        log.info(f"Using model: {llm_model.identifier}")
+        log.info(f"Using agent: {selectedAssistant.name}")
 
-        chat = Chat("", "") 
+        session_id = "session_not_set"
+        if request.sessionId:
+            session_id = request.sessionId
+
+        # Fetch the session state from the database if session_id is set.
+        session_state = None
+        if session_id != "session_not_set":
+            result = await db.execute(select(models.ChatSession).where(models.ChatSession.id == session_id))
+            session = result.scalar_one_or_none()
+            if session:
+                session_state = json.loads(session.session_state)
+                if "agent_session_id" in session_state:
+                    session_id = session_state["agent_session_id"]
+                log.info(f"Got Session state from the database: {session_id}")
+            else:
+                log.info(f"Session {session_id} not found in the database")
+
+        log.info(f"Creating chat session with Session ID: {session_id}")
+        chat = Chat(session_state, selectedAssistant, log)
         
         def generate_response() -> AsyncGenerator[str, None]:
             try:
                 # Can check if there is last message and role is user
-                if len(request.messages) >0:
+                if len(request.messages) > 0:
                     last_message = request.messages.pop()
                     for chunk in chat.stream(last_message.content):
-                        yield f"data: {chunk}\n\n"
-                    yield f"data: [DONE]\n\n"
-                else:
-                    yield f"data: Error Query is empty\n\n"
+                        # Escape text so it can be sent as json
+                        text = json.dumps(chunk)
+                        yield f"data: {{\"type\":\"text\",\"content\":{text}}}\n\n"
+
+                    # Send session ID as an event
+                    log.info(f"Sending Session ID: {chat.session_id}")
+                    yield f"data: {{\"type\":\"session\",\"sessionId\":\"{chat.session_id}\"}}\n\n"
+
+                # End of stream
+                yield f"data: [DONE]\n\n"
+
             except Exception as e:
                 log.error(f"Error in stream: {str(e)}")
                 #yield f"data: Error: {str(e)}\n\n"
                 yield f"data: Error  {str(e)}\n\n"
 
-
+        # save session state to db
+        background_task.add_task(save_session_state, chat, db)
+        
         return StreamingResponse(
             generate_response(),
             media_type="text/event-stream"
@@ -216,7 +248,22 @@ def chat(request: ChatRequest):
 
     except Exception as e:
         log.error(f"Error in chat endpoint: {str(e)}")
+        #log.error(e.with_traceback())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+async def save_session_state(chat: Chat, db: AsyncSession): 
+    #Save session state to the database
+    log.info(f"Saving session_state with session id: {chat.session_id}")
+    insert_stmt = insert(ChatSession).values(
+        id = chat.session_id,
+        session_state=json.dumps(chat.session_state)
+    )
+    update_stmt = insert_stmt.on_conflict_do_update(
+        index_elements=[ChatSession.id],
+        set_=dict(session_state=json.dumps(chat.session_state))
+    )
+    await db.execute(update_stmt)
+    await db.commit()

@@ -105,3 +105,14 @@ class ModelServer(Base):
     model_name = Column(String(255), nullable=False)
     endpoint_url = Column(String(255), nullable=False)
     token = Column(String(255), nullable=True)
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    id = Column(String(255), primary_key=True)
+    # session_id = Column(UUID, unique=True)
+    # user_id = Column(UUID, ForeignKey("users.id"))
+    # assistant_id = Column(UUID, ForeignKey("assistants.id"))
+    # messages = Column(JSONB, default=list)
+    session_state = Column(JSON, default=dict)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
