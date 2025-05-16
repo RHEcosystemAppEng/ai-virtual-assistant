@@ -54,27 +54,30 @@ class Chat:
         return client
 
     def _get_tools(self):
-        # get the list of tools from the 
-        # tool_groups = self._get_client().toolgroups.list()
-        # tool_groups_list = [tool_group.identifier for tool_group in tool_groups]
-        # mcp_tools_list = [tool for tool in tool_groups_list if tool.startswith("mcp::")]
-        # builtin_tools_list = [tool for tool in tool_groups_list if not tool.startswith("mcp::")]
-
-        # toolgroup_selection = tool_groups_list
-        # selected_vector_dbs = self._get_client().vector_dbs.list() or []
-
-        # for i, tool_name in enumerate(toolgroup_selection):
-        #     if tool_name == "builtin::rag":
-        #         tool_dict = dict(
-        #             name="builtin::rag",
-        #             args={
-        #                 "vector_db_ids": list(selected_vector_dbs),
-        #             },
-        #         )
-        #         toolgroup_selection[i] = tool_dict
-
-        # return toolgroup_selection
-        return []
+        tool_groups = self._get_client().toolgroups.list()
+        tool_groups_list = [tool_group.identifier for tool_group in tool_groups]
+        
+        mcp_tools_list = [tool for tool in tool_groups_list if tool.startswith("mcp::")]
+        
+        if not mcp_tools_list:
+            return []
+            
+        # Check if builtin::rag is in the tool groups
+        if "builtin::rag" in tool_groups_list:
+            selected_vector_dbs = self._get_client().vector_dbs.list() or []
+            vector_db_ids = [db.identifier for db in selected_vector_dbs]
+            
+            rag_tool = {
+                "name": "builtin::rag",
+                "args": {
+                    "vector_db_ids": vector_db_ids,
+                },
+            }
+            
+            return mcp_tools_list + [rag_tool]
+        
+        # If no builtin::rag, just return MCP tools
+        return mcp_tools_list
 
 
     def _get_model(self):
