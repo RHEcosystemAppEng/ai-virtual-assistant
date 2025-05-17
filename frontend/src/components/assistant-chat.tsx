@@ -99,7 +99,6 @@ export function AssistantChat() {
   const scrollToBottomRef = React.useRef<HTMLDivElement>(null);
   const historyRef = React.useRef<HTMLButtonElement>(null);
 
-
   const displayMode = ChatbotDisplayMode.embedded;
 
   const onSelectModel = (
@@ -236,7 +235,8 @@ export function AssistantChat() {
                   if (lastMsg) {
                     // Add space after sentence endings if needed
                     const currentContent = lastMsg.content || '';
-                    const needsSpace = currentContent.match(/[.!?]$/) && text && !text.startsWith(' ');
+                    const needsSpace =
+                      currentContent.match(/[.!?]$/) && text && !text.startsWith(' ');
                     lastMsg.content = currentContent + (needsSpace ? ' ' : '') + text;
                     lastMsg.isLoading = false;
                   }
@@ -303,7 +303,7 @@ export function AssistantChat() {
               <ChatbotHeaderActions>
                 <ChatbotHeaderSelectorDropdown value={selectedModel} onSelect={onSelectModel}>
                   <DropdownList>
-                    {availableModels.map(model => (
+                    {availableModels.map((model) => (
                       <DropdownItem value={model.id} key={model.id}>
                         {model.name}
                       </DropdownItem>

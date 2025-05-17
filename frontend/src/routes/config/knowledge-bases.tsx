@@ -1,82 +1,59 @@
-import { KnowledgeBaseCard } from '@/components/knowledge-base-card';
-import { KnowledgeBaseForm } from '@/components/knowledge-base-form';
-import { PageSection, Title } from '@patternfly/react-core';
+import { Flex, FlexItem, PageSection, Title } from '@patternfly/react-core';
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
-import axios from '../../../../admin/src/api/axios.ts';
+import { KnowledgeBaseList } from '@/components/knowledge-base-list.tsx';
+import { NewKnowledgeBaseCard } from '@/components/new-knowledge-base-card.tsx';
 
-import { KnowledgeBase } from '@/types/index.js';
-import baseUrl from '../../config/api';
+// Type def for fetching knowledge bases
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  version: string;
+  embedding_model: string;
+  provider_id: string;
+  vector_db_name: string;
+  is_external: boolean;
+  source: string;
+  source_configuration: JSON;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
 
+// Type def for creating knowledge bases
+export interface NewKnowledgeBase {
+  id: string;
+  name: string;
+  provider_id: string;
+  embedding_model: string;
+  version: string;
+  vector_db_name: string;
+  is_external: boolean;
+  source: string;
+  source_configuration: JSON;
+}
+
+// route for knowledge bases
 export const Route = createFileRoute('/config/knowledge-bases')({
   component: KnowledgeBases,
 });
 
+// main KnowledgeBasesPage component
 export function KnowledgeBases() {
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
-
-  useEffect(() => {
-    void fetchKbs();
-  }, []);
-
-  const fetchKbs = async () => {
-    const res = await axios.get(`${baseUrl}/knowledge_bases/`);
-    const kbs = res.data;
-
-    if (kbs) {
-      setKnowledgeBases(kbs);
-    } else {
-      setKnowledgeBases([
-        {
-          id: '1',
-          name: 'apple',
-          version: 'v1',
-          embedding_model: 'llamastack',
-          provider_id: '1',
-          vector_db_name: 'pg_data',
-          is_external: true,
-          source: 'www',
-          source_configuration: 'config',
-          created_by: '2020-01-01',
-        },
-        {
-          id: '2',
-          name: 'orange',
-          version: 'v1',
-          embedding_model: 'llamastack',
-          provider_id: '1',
-          vector_db_name: 'pg_data',
-          is_external: true,
-          source: 'www',
-          source_configuration: 'config',
-          created_by: '2020-01-01',
-        },
-        {
-          id: '3',
-          name: 'grape',
-          version: 'v1',
-          embedding_model: 'llamastack',
-          provider_id: '1',
-          vector_db_name: 'pg_data',
-          is_external: true,
-          source: 'www',
-          source_configuration: 'config',
-          created_by: '2020-01-01',
-        },
-      ]);
-    }
-  };
-
   return (
-    <PageSection hasBodyWrapper={false}>
-      <Title headingLevel="h1">Knowledge Bases</Title>
-
-      <PageSection className="pf-v5-u-mb-lg">
-        <KnowledgeBaseForm />
-        {knowledgeBases.map((knowledgebase) => (
-          <KnowledgeBaseCard key={knowledgebase.id} knowledgeBase={knowledgebase} />
-        ))}
-      </PageSection>
+    <PageSection>
+      <Flex direction={{ default: 'column' }} gap={{ default: 'gapMd' }}>
+        <FlexItem>
+          <Title headingLevel="h1" className="pf-v5-u-mb-lg">
+            Configure Knowledge Bases
+          </Title>
+        </FlexItem>
+        <FlexItem>
+          <NewKnowledgeBaseCard />
+        </FlexItem>
+        <FlexItem>
+          <KnowledgeBaseList />
+        </FlexItem>
+      </Flex>
     </PageSection>
   );
 }
