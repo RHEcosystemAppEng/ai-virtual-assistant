@@ -165,6 +165,7 @@ class VAChatRequest(BaseModel):
     virtualAssistantId: str
     sessionId: Optional[str] = None
     agentId: Optional[str] = None
+    user_id: Optional[str] = "default_user"
 
 @router.post("/chat")
 def chat(request: ChatRequest):
@@ -220,3 +221,24 @@ def chat(request: ChatRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+@router.post("/vachat")
+async def va_chat(request: VAChatRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        if not request.messages:
+            raise HTTPException(status_code=400, detail="No messages provided")
+            
+        chat = Chat(request.user_id or "default_user", request.virtualAssistantId)
+        
+        try:
+            return StreamingResponse(
+                chat.stream(request.messages[-1].content, db),
+                media_type="text/event-stream"
+            )
+        except ValueError as ve:
+            log.error(f"Error in chat stream: {str(ve)}")
+            raise HTTPException(status_code=400, detail=str(ve))
+            
+    except Exception as e:
+        log.error(f"Error in va_chat endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

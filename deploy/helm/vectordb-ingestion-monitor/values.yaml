@@ -1,4 +1,6 @@
 # Default values for vectordb-ingestion-monitor
+namespace: llama-stack-rag
+
 replicaCount: 1
 
 image:
@@ -17,12 +19,3 @@ monitor:
       name: ingestion-pipeline-monitor
     roleBinding:
       name: ingestion-pipeline-monitor
-
-llamastack:
-  baseUrl: "http://llamastack.rag-llama-demo.svc.cluster.local:8321"
-
-dsPipeline:
-  url: "https://ds-pipeline-dspa.rag-llama-demo.svc.cluster.local:8888"
-
-securityContext:
-  runAsUser: 1000840000 

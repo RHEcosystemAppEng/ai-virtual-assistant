@@ -121,3 +121,89 @@ async def delete_virtual_assistant(va_id: UUID, db: AsyncSession = Depends(get_d
     await db.delete(db_va)
     await db.commit()
     return None
+
+@router.get("/{va_id}/components", response_model=dict)
+async def get_virtual_assistant_components(va_id: UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        # Get the virtual assistant
+        result = await db.execute(select(models.VirtualAssistant).where(models.VirtualAssistant.id == va_id))
+        db_va = result.scalar_one_or_none()
+        if not db_va:
+            log.error(f"Virtual assistant with ID {va_id} not found")
+            raise HTTPException(status_code=404, detail="Virtual assistant not found")
+
+        # Get the model server
+        model_result = await db.execute(
+            select(models.ModelServer).where(models.ModelServer.model_name == db_va.model_name)
+        )
+        model_server = model_result.scalar_one_or_none()
+        if not model_server:
+            log.error(f"Model server for model {db_va.model_name} not found")
+            raise HTTPException(status_code=404, detail=f"Model server for model {db_va.model_name} not found")
+
+        # Get knowledge bases
+        kb_result = await db.execute(
+            select(models.VirtualAssistantKnowledgeBase)
+            .where(models.VirtualAssistantKnowledgeBase.virtual_assistant_id == va_id)
+        )
+        kb_relations = kb_result.scalars().all()
+        kb_ids = [r.knowledge_base_id for r in kb_relations]
+        
+        kb_details = []
+        for kb_id in kb_ids:
+            # Since knowledge_base_id is a string, we need to query by vector_db_name instead
+            kb_detail = await db.execute(
+                select(models.KnowledgeBase).where(models.KnowledgeBase.vector_db_name == kb_id)
+            )
+            kb = kb_detail.scalar_one_or_none()
+            if kb:
+                kb_details.append({
+                    "id": str(kb.id),
+                    "name": kb.name,
+                    "version": kb.version,
+                    "embedding_model": kb.embedding_model,
+                    "vector_db_name": kb.vector_db_name,
+                    "is_external": kb.is_external,
+                    "source": kb.source,
+                    "source_configuration": kb.source_configuration
+                })
+
+        # Get MCP servers (tools)
+        mcp_result = await db.execute(
+            select(models.VirtualAssistantTool)
+            .where(models.VirtualAssistantTool.virtual_assistant_id == va_id)
+        )
+        mcp_relations = mcp_result.scalars().all()
+        mcp_ids = [r.mcp_server_id for r in mcp_relations]
+        
+        mcp_details = []
+        for mcp_id in mcp_ids:
+            # Since mcp_server_id is a string, we need to query by name instead
+            mcp_detail = await db.execute(
+                select(models.MCPServer).where(models.MCPServer.name == mcp_id)
+            )
+            mcp = mcp_detail.scalar_one_or_none()
+            if mcp:
+                mcp_details.append({
+                    "id": str(mcp.id),
+                    "name": mcp.name,
+                    "title": mcp.title,
+                    "description": mcp.description,
+                    "endpoint_url": mcp.endpoint_url,
+                    "configuration": mcp.configuration
+                })
+
+        return {
+            "model_server": {
+                "id": str(model_server.id) if model_server else None,
+                "name": model_server.name if model_server else None,
+                "provider_name": model_server.provider_name if model_server else None,
+                "model_name": model_server.model_name if model_server else None,
+                "endpoint_url": model_server.endpoint_url if model_server else None
+            },
+            "knowledge_bases": kb_details,
+            "tools": mcp_details
+        }
+    except Exception as e:
+        log.error(f"Error fetching components for virtual assistant {va_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
