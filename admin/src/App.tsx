@@ -6,7 +6,6 @@ import MCPServerPage from './pages/MCPServerPage';
 import KnowledgeBasePage from './pages/KnowledgeBasePage';
 import ModelServerPage from './pages/ModelServerPage';
 import ChatPage from './pages/ChatPage';
-import VirtualAssistantChatPage from './pages/VirtualAssistantChatPage';
 import Navbar from './components/Navbar';
 
 export default function App() {
@@ -20,7 +19,6 @@ export default function App() {
         <Route path="/knowledge_bases" element={<KnowledgeBasePage />} />
         <Route path="/model_servers" element={<ModelServerPage />} />
         <Route path="/chat" element={<ChatPage />} />
-        <Route path="/virtual_assistant_chat" element={<VirtualAssistantChatPage />} />
       </Routes>
     </Router>
   );
