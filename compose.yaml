@@ -14,6 +14,25 @@ services:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data7
+    healthcheck:
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U admin -d ai_virtual_assistant'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  virtual-assistant:
+    image: quay.io/ecosystem-appeng/ai-virtual-assistant:1.1.0
+    container_name: ai-virtual-assistant
+    profiles:
+      - deploy-va
+    environment:
+      DATABASE_URL: postgresql+asyncpg://admin:password@host.containers.internal:5432/ai_virtual_assistant
+      LLAMASTACK_URL: http://host.containers.internal:8321
+    ports:
+      - '8000:8000'
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:

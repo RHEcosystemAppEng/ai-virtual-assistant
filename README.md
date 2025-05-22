@@ -67,3 +67,11 @@ podman build --platform linux/amd64 -t quay.io/ecosystem-appeng/ai-virtual-assis
    -e LLAMASTACK_URL=http://host.containers.internal:8321 \
    quay.io/ecosystem-appeng/ai-virtual-assistant:1.1.0
    ```
+
+### Running the container image with compose
+
+* Alternatively, run compose enabling the `deploy-va` profile
+
+   ```bash
+   podman compose --profile deploy-va up
+   ```
