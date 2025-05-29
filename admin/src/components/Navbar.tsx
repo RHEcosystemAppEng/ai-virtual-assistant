@@ -27,9 +27,6 @@ export default function Navbar() {
             <li>
               <Link to="/chat" className="hover:text-blue-600 transition">Chat</Link>
             </li>
-            <li>
-              <Link to="/virtual_assistant_chat" className="hover:text-blue-600 transition">Virtual Assistant Chat</Link>
-            </li>
           </ul>
         </div>
       </div>
