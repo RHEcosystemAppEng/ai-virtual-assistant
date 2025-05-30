@@ -1,0 +1,29 @@
+# Containerfile for MCP Store Server (Direct DB Access)
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy application code
+COPY ./appservers/store/ /app/appservers/store/
+COPY ./mcpservers/mcp_dbstore/ /app/mcpservers/mcp_dbstore/
+
+# Copy requirements file and install dependencies
+RUN pip install --no-cache-dir -r /app/mcpservers/mcp_dbstore/requirements.txt
+
+# Environment variables
+# Should be configured at runtime
+ENV MCP_STORE_DATABASE_URL="postgresql://myuser:mypassword@127.0.0.1:5432/store_db"
+# Ensures `mcpservers.mcp_store` can be found for `python -m`, and its internal `from . import X` work.
+ENV PYTHONPATH=/app
+
+# Expose port (if the MCP server runs an HTTP service directly)
+# This depends on how FastMCP servers are run. Adjust if necessary.
+# EXPOSE 8002
+
+# Command to run the MCP server
+# This is highly dependent on your FastMCP framework.
+# The store.py now has a __main__ block that calls create_db_and_tables().
+# You might run it directly if your FastMCP doesn't have a separate runner.
+# CMD ["python", "mcpservers/mcp_store/store.py"] # Example
+CMD ["python", "-m", "mcpservers.mcp_dbstore.store"]

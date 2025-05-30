@@ -7,16 +7,32 @@ from typing import List, Dict, Any
 from .. import models, schemas
 from ..database import get_db
 from ..api.llamastack import client
+from llama_stack_client.types.toolgroup_register_params import McpEndpoint
 
 router = APIRouter(prefix="/mcp_servers", tags=["mcp_servers"])
 
 @router.post("/", response_model=schemas.MCPServerRead, status_code=status.HTTP_201_CREATED)
 async def create_mcp_server(server: schemas.MCPServerCreate, db: AsyncSession = Depends(get_db)):
-    db_server = models.MCPServer(**server.dict())
-    db.add(db_server)
+    #TODO refactor mcp server model to include toolgroup_id
+    mcp_server = models.MCPServer(**server.model_dump())
+
+    # Create a new tool group in llama stack
+    # Tools are discovered dynamically from the endpoint
+    try:
+        client.toolgroups.register(
+            provider_id="model-context-protocol",
+            toolgroup_id="mcp::" + mcp_server.name,
+            mcp_endpoint=McpEndpoint(uri=mcp_server.endpoint_url),
+        )
+    except Exception as e:
+            print(f"Error creating tool group in llama stack: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # commit to databse
+    db.add(mcp_server)
     await db.commit()
-    await db.refresh(db_server)
-    return db_server
+    await db.refresh(mcp_server)
+    return mcp_server
 
 @router.get("/", response_model=List[schemas.MCPServerRead])
 async def read_mcp_servers(db: AsyncSession = Depends(get_db)):
