@@ -1,0 +1,35 @@
+# Containerfile for MCP WebStore Server (API Client)
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Ensure target directory for __init__.py exists (if mcpservers/__init__.py is needed for namespacing)
+# RUN mkdir -p /app/mcpservers/
+
+# Copy application code
+# Copy the webstore mcp server code
+COPY ./mcpservers/mcp_webstore/ /app/mcpservers/mcp_webstore/
+# Copy the appservers code so webstore can import from it (e.g., for models)
+COPY ./appservers/store/ /app/appservers/store/
+
+# Ensures `mcpservers.mcp_webstore` and `appservers` can be found for `python -m` and imports.
+ENV PYTHONPATH=/app
+
+# Copy requirements file and install dependencies
+COPY ./mcpservers/mcp_webstore/requirements.txt /app/mcpservers/mcp_webstore/requirements.txt
+RUN pip install --no-cache-dir -r /app/mcpservers/mcp_webstore/requirements.txt
+
+# Environment variables
+# Default, should be configurable. Assumes Docker networking.
+# Updated to reflect potential Docker service name
+ENV STORE_SERVER_URL="http://appservers-store:8001"
+
+# Expose port (if the MCP server runs an HTTP service directly)
+# Adjust if necessary.
+# EXPOSE 8003
+
+# Command to run the MCP server
+# This is highly dependent on your FastMCP framework.
+# Replace with the actual command to start your FastMCP server.
+CMD ["python", "-m", "mcpservers.mcp_webstore.webstore"] # A more common way to run modules 

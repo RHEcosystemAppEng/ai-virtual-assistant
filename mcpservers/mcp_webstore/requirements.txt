@@ -1,0 +1,4 @@
+# Dependencies for MCP WebStore Server (API Client)
+httpx
+pydantic
+mcp[cli]>=1.6.0 

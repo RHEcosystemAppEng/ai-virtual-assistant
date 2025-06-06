@@ -1,0 +1,23 @@
+# Containerfile for Store Server (FastAPI)
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy application code
+COPY ./appservers/store/ /app/appservers/store/
+COPY ./appservers/__init__.py /app/appservers/__init__.py
+
+# Copy requirements file and install dependencies
+COPY ./appservers/store/requirements.txt /app/appservers/store/requirements.txt
+RUN pip install --no-cache-dir -r /app/appservers/store/requirements.txt
+
+# Environment variables
+ENV PYTHONPATH=/app
+# Default for docker-compose, adjust as needed
+ENV DATABASE_URL="postgresql://myuser:mypassword@127.0.0.1:5432/store_db"
+
+EXPOSE 8001
+
+# Command to run the Store Server
+CMD ["uvicorn", "appservers.store.main:app", "--host", "0.0.0.0", "--port", "8001"] 

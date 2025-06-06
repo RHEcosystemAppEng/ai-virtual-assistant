@@ -1,0 +1,25 @@
+# Containerfile for MCP Store Server (Direct DB Access)
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy the entire mcpservers package structure and the specific requirements file
+# This assumes the build context is the project root.
+COPY ./mcpservers/mcp_dbstore /app/mcpservers/mcp_dbstore
+
+# Install dependencies for mcp_dbstore
+RUN pip install --no-cache-dir -r /app/mcpservers/mcp_dbstore/requirements.txt
+
+# Environment variables
+# Should be configured at runtime, but provide a default for asyncpg
+ENV DATABASE_URL="postgresql+asyncpg://myuser:mypassword@postgres-service:5432/store_db"
+# Ensures Python can find the mcpservers package from the /app directory.
+ENV PYTHONPATH=/app
+
+# Expose port (if the MCP server runs an HTTP service directly)
+# This depends on how FastMCP servers are run. Adjust if necessary.
+EXPOSE 8001
+
+# Command to run the MCP server
+CMD ["python", "-m", "mcpservers.mcp_dbstore.store"]
