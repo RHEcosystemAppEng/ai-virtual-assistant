@@ -6,24 +6,40 @@ from typing import List, Dict, Any
 from .. import models, schemas
 from ..database import get_db
 from ..api.llamastack import client
+from llama_stack_client.types.toolgroup_register_params import McpEndpoint
 
 router = APIRouter(prefix="/mcp_servers", tags=["mcp_servers"])
 
 @router.post("/", response_model=schemas.MCPServerRead, status_code=status.HTTP_201_CREATED)
 async def create_mcp_server(server: schemas.MCPServerCreate, db: AsyncSession = Depends(get_db)):
-    db_server = models.MCPServer(**server.dict())
-    db.add(db_server)
+
+    mcp_server = models.MCPServer(**server.model_dump())
+
+    # Create a new tool group in llama stack
+    # Tools are discovered dynamically from the endpoint
+    try:
+        client.toolgroups.register(
+            provider_id="model-context-protocol",
+            toolgroup_id=mcp_server.toolgroup_id,
+            mcp_endpoint=McpEndpoint(uri=mcp_server.endpoint_url),
+        )
+    except Exception as e:
+            print(f"Error creating tool group in llama stack: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # commit to databse
+    db.add(mcp_server)
     await db.commit()
-    await db.refresh(db_server)
     
     # Auto-sync with LlamaStack after creation
     try:
-        print(f"Auto-syncing MCP servers after creation of: {db_server.name}")
+        print(f"Auto-syncing MCP servers after creation of: {mcp_server.name}")
         await sync_mcp_servers(db)
     except Exception as e:
         print(f"Warning: Failed to auto-sync after MCP server creation: {str(e)}")
+    await db.refresh(mcp_server)
     
-    return db_server
+    return mcp_server
 
 @router.get("/", response_model=List[schemas.MCPServerRead])
 async def read_mcp_servers(db: AsyncSession = Depends(get_db)):

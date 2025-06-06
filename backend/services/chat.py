@@ -1,13 +1,13 @@
 import enum
+from http.client import HTTPException
 import json
 import uuid
 import os
 from fastapi import Depends
-from llama_stack_client import Agent
-from llama_stack_client.lib.agents.react.agent import ReActAgent
+from llama_stack_client.types.shared_params.agent_config import AgentConfig
 from llama_stack_client.lib.agents.react.tool_parser import ReActOutput
 from ..api.llamastack import client
-from ..agents import ExistingAgent, ExistingReActAgent
+from ..virtual_agents.agents import ExistingAgent, ExistingReActAgent
 
 class AgentType(enum.Enum):
     REGULAR = "Regular"
@@ -37,6 +37,7 @@ class Chat:
 
     def __init__(self, session_state, assistant, logger):
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
+        
         # Initialize session_state if needed
         self.session_state = None
         if not session_state:
@@ -51,11 +52,10 @@ class Chat:
         if "agent_session_id" in self.session_state:
             self.session_id = self.session_state["agent_session_id"]
         
-        self.model = assistant.model_name
-        # TODO: Tools need to be assembled from builtins, kbs and mcp servers
-        self.kbs = []
-        self.mcp_servers = []
-        self.tools = []
+        self.agent_id = assistant.agent_id
+        self.agent_config = assistant.agent_config
+        self.model = assistant.agent_config.get("model", None)
+        self.tools = assistant.agent_config.get("toolgroups", [])
         self.log = logger
         
     def _reset_agent(self):
@@ -67,15 +67,15 @@ class Chat:
         return client
 
     def _get_tools(self):
-        # get the list of tools from the knowledge bases and mcp servers
+        # Get the list of tools from the knowledge bases and mcp servers
+        
         # tool_groups = self._get_client().toolgroups.list()
         # tool_groups_list = [tool_group.identifier for tool_group in tool_groups]
         # mcp_tools_list = [tool for tool in tool_groups_list if tool.startswith("mcp::")]
         # builtin_tools_list = [tool for tool in tool_groups_list if not tool.startswith("mcp::")]
-
         # toolgroup_selection = tool_groups_list
+        
         # selected_vector_dbs = self._get_client().vector_dbs.list() or []
-
         # for i, tool_name in enumerate(toolgroup_selection):
         #     if tool_name == "builtin::rag":
         #         tool_dict = dict(
@@ -85,73 +85,48 @@ class Chat:
         #             },
         #         )
         #         toolgroup_selection[i] = tool_dict
-
         # return toolgroup_selection
+        
+        # Tool selection is done when agents are created with a post to /virtual_assistants
         return self.tools
 
 
     def _get_model(self):
-        
+        # Get the list of models from llama stack
         # models = self._get_client().models.list()
         # model_list = [model.identifier for model in models if model.api_model_type == "llm"]
         # return model_list[0]
         return self.model
 
-
-    def _create_agent(self, 
-                    agent_type: AgentType,
-                    model: str,
-                    tools: list,
-                    max_tokens: int):
-        
-        if agent_type == AgentType.REACT:
-            return ReActAgent(
-                self._get_client(),
-                model=model,
-                tools=tools,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": ReActOutput.model_json_schema(),
-                },
-                sampling_params={"strategy": {"type": "greedy"}, "max_tokens": max_tokens},
-            )
-        else:
-            return Agent(
-                self._get_client(),
-                model=model,
-                instructions="You are a helpful assistant. When you use a tool always respond with a summary of the result.",
-                tools=tools,
-                sampling_params={"strategy": {"type": "greedy"}, "max_tokens": max_tokens},
-            )
-
     def _create_agent_with_id(self,
                            agent_type: AgentType,
                            agent_id: str,
-                           model: str,
-                           tools: list,
-                           max_tokens: int):
+                           agent_config: AgentConfig):
         """Create an agent with an existing agent_id without calling initialize()."""
+
+        # TODO: Pass in agent_config and avoid calls to llama stack api
 
         if agent_type == AgentType.REACT:
             return ExistingReActAgent(
                 self._get_client(),
                 agent_id=agent_id,
-                model=model,
-                tools=tools,
+                agent_config=agent_config,
+                # parameters are populated from the agent config
+                # sampling_params={"strategy": {"type": "greedy"}, "max_tokens": max_tokens},
                 response_format={
                     "type": "json_schema",
                     "json_schema": ReActOutput.model_json_schema(),
                 },
-                sampling_params={"strategy": {"type": "greedy"}, "max_tokens": max_tokens},
+
             )
         else:
             return ExistingAgent(
                 self._get_client(),
                 agent_id=agent_id,
-                model=model,
-                instructions="You are a helpful assistant. When you use a tool always respond with a summary of the result.",
-                tools=tools,
-                sampling_params={"strategy": {"type": "greedy"}, "max_tokens": max_tokens},
+                agent_config=agent_config,
+                # parameters are populated from the agent config
+                # instructions="You are a helpful assistant. When you use a tool always respond with a summary of the result.",
+                # sampling_params={"strategy": {"type": "greedy"}, "max_tokens": max_tokens},
             )
 
     def _response_generator(self, turn_response):
@@ -344,32 +319,24 @@ class Chat:
         # Force defaulting to REGULAR agent type
         agent_type = AgentType.REGULAR
         self.session_state["agent_type"] = str(agent_type)
-        max_tokens = 512 # 4096
 
-        # Create agent if not present in session state
+        # Add agent_id to session state if not present in session state
         if "agent_id" not in self.session_state:
-            # Create agent
-            agent = self._create_agent(agent_type, self._get_model(), self._get_tools(), max_tokens)
-            # Save agent id in session state so it can be used to retrieve the agent from registry
-            self.session_state["agent_id"] = agent.agent_id
-            self.log.info(f"Created a new agent: {self.session_state['agent_id']}")
-        else:
-            try:
-                # Attempt to re-use existing agent
-                agent = self._create_agent_with_id(agent_type, self.session_state["agent_id"],self._get_model(), self._get_tools(), max_tokens)
-                self.log.info(f"Using existing agent: {agent.agent_id}")
-            except Exception as e:
-                self.log.error(f"Error getting existing agent: {str(e)}")
+            self.session_state["agent_id"] = self.agent_id
+            self.log.info(f"Added agent to session state with id: {self.session_state['agent_id']}")
 
-                # Invalidate old agent_session_id
-                del self.session_state["agent_session_id"]
-                del self.session_state["messages"]
-
-                # Create new agent
-                agent = self._create_agent(agent_type, self._get_model(), self._get_tools(), max_tokens)
-                # Save agent id in session state so it can be re-used
-                self.session_state["agent_id"] = agent.agent_id
-                self.log.info(f"Created a new agent: {self.session_state['agent_id']}")
+        # Configure agent
+        agent = None
+        try:
+            agent = self._create_agent_with_id(agent_type, self.agent_id, self.agent_config)
+            self.log.info(f"Using existing agent: {agent.agent_id}")
+        except Exception as e:
+            self.log.error(f"Error getting existing agent: {str(e)}")
+            # Invalidate old session
+            del self.session_state["agent_id"]
+            del self.session_state["agent_session_id"]
+            del self.session_state["messages"]
+            raise HTTPException(status_code=500, detail=f"Error using agent {self.session_state['agent_id']}")
 
         # Create session if not present in session state
         if "agent_session_id" not in self.session_state:
@@ -381,7 +348,7 @@ class Chat:
         # "Export" session_id so that the background task can save it to the database when the stream ends
         self.session_id = self.session_state["agent_session_id"]
 
-        # Reinitialize messages array incase session was invalidated
+        # Initialize messages array incase session was invalidated
         if "messages" not in self.session_state:
             self.session_state["messages"] = []
 
@@ -395,4 +362,3 @@ class Chat:
         )
 
         yield from self._response_generator(turn_response)
-        

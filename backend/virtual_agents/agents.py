@@ -1,3 +1,4 @@
+from http.client import HTTPException
 from llama_stack_client import Agent
 from llama_stack_client.lib.agents.react.agent import ReActAgent
 from typing import Optional, List, Union, Any, Tuple, Callable
@@ -16,32 +17,30 @@ class ExistingAgent(Agent):
         self,
         client,
         agent_id: str,
+        agent_config: Optional[AgentConfig] = None,
         model: Optional[str] = None,
         instructions: Optional[str] = None,
         tools: Optional[List[Union[Toolgroup, ClientTool, Callable[..., Any]]]] = None,
         tool_config: Optional[ToolConfig] = None,
         sampling_params: Optional[SamplingParams] = None,
         max_infer_iters: Optional[int] = None,
-        agent_config: Optional[AgentConfig] = None,
         client_tools: Tuple[ClientTool, ...] = (),
         tool_parser: Optional[ToolParser] = None,
     ):
-        # Call parent's __init__ but skip the initialize() call
+  
         self.client = client
-        self.model = model
-        self.instructions = instructions
-        self.tools = tools or []
-        self.tool_config = tool_config
-        self.sampling_params = sampling_params
-        self.max_infer_iters = max_infer_iters
+        self.agent_id = agent_id
         self.agent_config = agent_config
-        self.client_tools = client_tools
+        self.model = agent_config.get("model", None)
+        self.instructions = agent_config.get("instructions", None)
+        self.tools = agent_config.get("toolgroups", [])
+        self.tool_config = agent_config.get("tool_config", None)
+        self.sampling_params = agent_config.get("sampling_params", None)
+        self.max_infer_iters = agent_config.get("max_infer_iters", None)
+        self.client_tools = agent_config.get("client_tools", [])
         self.tool_parser = tool_parser
         self.sessions = []
         self.builtin_tools = {}
-        
-        # Set the agent_id directly instead of calling initialize()
-        self.agent_id = agent_id
 
 
 class ExistingReActAgent(ReActAgent):
@@ -51,29 +50,27 @@ class ExistingReActAgent(ReActAgent):
         self,
         client,
         agent_id: str,
+        agent_config: Optional[AgentConfig] = None,
         model: Optional[str] = None,
         tools: Optional[List[Union[Toolgroup, ClientTool, Callable[..., Any]]]] = None,
         tool_config: Optional[ToolConfig] = None,
         sampling_params: Optional[SamplingParams] = None,
         max_infer_iters: Optional[int] = None,
-        response_format: Optional[dict] = None,
-        agent_config: Optional[AgentConfig] = None,
         client_tools: Tuple[ClientTool, ...] = (),
+        response_format: Optional[dict] = None,
         tool_parser: Optional[ToolParser] = None,
     ):
-        # Call parent's __init__ but skip the initialize() call
+
         self.client = client
-        self.model = model
-        self.tools = tools or []
-        self.tool_config = tool_config
-        self.sampling_params = sampling_params
-        self.max_infer_iters = max_infer_iters
-        self.response_format = response_format
+        self.agent_id = agent_id
         self.agent_config = agent_config
-        self.client_tools = client_tools
+        self.model = agent_config.get("model", None)
+        self.tools = agent_config.get("toolgroups", [])
+        self.tool_config = agent_config.get("tool_config", None)
+        self.sampling_params = agent_config.get("sampling_params", None)
+        self.max_infer_iters = agent_config.get("max_infer_iters", None)
+        self.client_tools = agent_config.get("client_tools", [])
+        self.response_format = response_format
         self.tool_parser = tool_parser
         self.sessions = []
         self.builtin_tools = {}
-        
-        # Set the agent_id directly instead of calling initialize()
-        self.agent_id = agent_id

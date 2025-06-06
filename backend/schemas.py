@@ -26,7 +26,7 @@ class UserRead(UserBase):
     updated_at: Any
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # MCPServer Schemas
 class MCPServerBase(BaseModel):
@@ -45,7 +45,7 @@ class MCPServerRead(MCPServerBase):
     updated_at: Any
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # KnowledgeBase Schemas
 class KnowledgeBaseBase(BaseModel):
@@ -67,7 +67,7 @@ class KnowledgeBaseRead(KnowledgeBaseBase):
     updated_at: Any
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Tool Association Info for VirtualAssistant
 class ToolAssociationInfo(BaseModel):
@@ -114,7 +114,7 @@ class VirtualAssistantUpdate(VirtualAssistantBase):
 class VirtualAssistantRead(VirtualAssistantBase):
     id: str
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ChatHistoryBase(BaseModel):
     virtual_assistant_id: UUID4
@@ -130,7 +130,7 @@ class ChatHistoryRead(ChatHistoryBase):
     created_at: Any
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class GuardrailBase(BaseModel):
     name: str
@@ -146,7 +146,7 @@ class GuardrailRead(GuardrailBase):
     updated_at: Any
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ModelServer Schemas (These seemed largely okay with your models.py)
 class ModelServerBase(BaseModel):
@@ -170,4 +170,4 @@ class ModelServerRead(ModelServerBase):
     id: UUID4
 
     class Config:
-        orm_mode = True
+        from_attributes = True

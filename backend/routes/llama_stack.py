@@ -1,29 +1,27 @@
+import json
+import logging
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
-from typing import List, Dict, Any, Literal, Optional
-import json
+from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from backend.models import VirtualAssistant
-from backend.database import get_db
 from typing import List, Dict, Any, Literal, Optional
-import logging
 from pydantic import BaseModel
-from .chat import Chat
-from ..api.llamastack import client
 from .. import models
-from fastapi import BackgroundTasks
+from backend.database import get_db
+from ..services.chat import Chat
+from ..api.llamastack import client
 
 class Message(BaseModel):
     role: Literal['user', 'assistant', 'system']
     content: str
 
-class VAChatMessage(BaseModel):
-    id: Optional[str] = None
-    role: Literal['user', 'assistant', 'system']
-    content: str
-    parts: List[str] = []  # Add parts field to match useChat format
+class ChatRequest(BaseModel):
+    virtualAssistantId: str
+    messages: list[Message]
+    stream: bool = False
+    sessionId: Optional[str] = None
 
 log = logging.getLogger(__name__)
 
@@ -94,10 +92,29 @@ async def get_mcp_servers():
     try:
         servers = client.toolgroups.list()
         return [{
-            "id": str(server.identifier),
+            "toolgroup_id": server.identifier,
             "name": server.provider_resource_id,
-            "title": server.provider_id,
+            "endpoint_url": server.mcp_endpoint.uri,
+            "configuration": server.args,
         } for server in servers]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/mcp_tools", response_model=List[Dict[str, Any]])
+async def get_mcp_tools(toolgroup_id: str = None):
+    """Get available tools from an MCP server"""
+    try:
+        if toolgroup_id:
+            log.info(f"Getting tools for toolgroup: {toolgroup_id}")
+            tools = client.tools.list(toolgroup_id)
+        else:
+            tools = client.tools.list()
+        
+        return [{
+            "toolgroup_id": tool.toolgroup_id,
+            "name": tool.identifier,
+            "description": tool.description,
+        } for tool in tools]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -168,38 +185,24 @@ async def get_providers():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-class ChatRequest(BaseModel):
-    virtualAssistantId: str
-    messages: list[Message]
-    stream: bool = False
-    sessionId: Optional[str] = None
-
 @router.post("/chat")
 async def chat(request: ChatRequest, background_task: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     """Chat endpoint that streams responses from LlamaStack"""
     try:
         log.info(f"Received request: {request.model_dump()}")
-        # Get the list of available virtual assistants from the database
-        result = await db.execute(select(models.VirtualAssistant))
-        assistants = result.scalars().all()
-        selectedAssistant = VirtualAssistant()
         
         # If the requested virtual assistant is available, use it
-        for va in assistants:
-            log.info(f"Requested virtual assistant: {request.virtualAssistantId}")
-            log.info(f"Processing virtual assistant: {va.id}")
-            if str(va.id) == request.virtualAssistantId:
-                log.info(f"Found virtual assistant: {va.id}")
-                selectedAssistant = va
-                break
-
-        if not selectedAssistant:
+        log.info(f"Retreving requested virtual assistant: {request.virtualAssistantId}")
+        selectedAssistant = None
+        try:
+            selectedAssistant = client.agents.retrieve(agent_id=request.virtualAssistantId)
+        except Exception as e:
+            log.error(f"Error retreving virtual assistant: {e}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Requested virtual assistant {request.virtualAssistantId} not available"
+                detail=f"Requested virtual assistant with agent id {request.virtualAssistantId} not available"
             )
-
-        log.info(f"Selected virtual assistant: {selectedAssistant.name}")
+        log.info(f"Selected virtual assistant: {selectedAssistant}")
 
         session_id = "session_not_set"
         if request.sessionId:
@@ -220,8 +223,7 @@ async def chat(request: ChatRequest, background_task: BackgroundTasks, db: Async
             else:
                 log.info(f"Session {session_id} not found in the database")
 
-        # TODO: Define whether we want to prioritize message history from the database or from the ui ?
-        # TODO: Currently llama stack in agent mode does not accept message history from the ui
+        # Currently llama stack in agent mode does not seem to accept message history from the ui
         # Uncomment below to use message history from the ui
         # session_state["messages"] = request.messages
 
@@ -268,12 +270,12 @@ async def chat(request: ChatRequest, background_task: BackgroundTasks, db: Async
 async def save_session_state(chat: Chat, db: AsyncSession): 
     #Save session state to the database
     log.info(f"Saving session_state with session id: {chat.session_id}")
-    insert_stmt = insert(ChatSession).values(
+    insert_stmt = insert(models.ChatSession).values(
         id = chat.session_id,
         session_state=json.dumps(chat.session_state)
     )
     update_stmt = insert_stmt.on_conflict_do_update(
-        index_elements=[ChatSession.id],
+        index_elements=[models.ChatSession.id],
         set_=dict(session_state=json.dumps(chat.session_state))
     )
     await db.execute(update_stmt)
