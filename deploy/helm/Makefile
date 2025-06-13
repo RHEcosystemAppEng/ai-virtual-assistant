@@ -113,20 +113,22 @@ install: namespace depend
 		$(INGESTION_ARGS) \
 		$(EXTRA_HELM_ARGS)
 	@echo "Waiting for model services and llamastack to deploy. It may take around 10-15 minutes depending on the size of the model..."
-	@oc rollout status deploy/llamastack
+	@oc rollout status deploy/llamastack -n $(NAMESPACE)
 	@echo "$(AI_VIRTUAL_ASSISTANT_CHART) installed successfully"
 
 	@echo "Installing $(VECTORDB_INGESTION_MONIFTOR_CHART) helm chart"
-	@helm upgrade --install vectordb-ingestion-monitor vectordb-ingestion-monitor -n $(NAMESPACE)
+	@helm upgrade --install $(VECTORDB_INGESTION_MONIFTOR_CHART) $(VECTORDB_INGESTION_MONIFTOR_CHART) -n $(NAMESPACE)
+	@echo "Waiting for ingestion pipeline monitor to deploy..."
+	@oc rollout status deploy/ingestion-pipeline-monitor -n $(NAMESPACE)
 	@echo "$(VECTORDB_INGESTION_MONIFTOR_CHART) installed successfully"
 
 # Uninstall the deployment and clean up
 .PHONY: uninstall
 uninstall:
 	@echo "Uninstalling $(AI_VIRTUAL_ASSISTANT_CHART) helm chart"
-	@helm uninstall $(AI_VIRTUAL_ASSISTANT_CHART)
+	@helm uninstall --ignore-not-found $(AI_VIRTUAL_ASSISTANT_CHART) -n $(NAMESPACE)
 	@echo "Uninstalling $(VECTORDB_INGESTION_MONIFTOR_CHART) helm chart"
-	@helm uninstall $(VECTORDB_INGESTION_MONIFTOR_CHART)
+	@helm uninstall --ignore-not-found $(VECTORDB_INGESTION_MONIFTOR_CHART) -n $(NAMESPACE)
 	@echo "Removing pgvector and minio PVCs from $(NAMESPACE)"
 	@oc get pvc -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^(pg|minio)-data' | xargs -I {} oc delete pvc -n $(NAMESPACE) {} ||:
 	@echo "Deleting remaining pods in namespace $(NAMESPACE)"
