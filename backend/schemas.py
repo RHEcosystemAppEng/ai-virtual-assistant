@@ -38,13 +38,13 @@ class RoleEnum(str, enum.Enum):
 
 
 class UserBase(BaseModel):
-    username: str
+    username: Optional[str] = None
     email: EmailStr
     role: RoleEnum
 
 
 class UserCreate(UserBase):
-    password: str
+    password: Optional[str] = None
 
 
 class UserRead(UserBase):

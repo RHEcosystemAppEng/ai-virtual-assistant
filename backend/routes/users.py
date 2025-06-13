@@ -22,6 +22,8 @@ from sqlalchemy.future import select
 
 from .. import models, schemas
 from ..database import get_db
+from ..services.auth import RoleChecker
+from ..models import RoleEnum
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -59,8 +61,7 @@ async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(get_d
     await db.refresh(db_user)
     return db_user
 
-
-@router.get("/", response_model=List[schemas.UserRead])
+@router.get("/", response_model=List[schemas.UserRead], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def read_users(db: AsyncSession = Depends(get_db)):
     """
     Retrieve all user accounts from the database.
