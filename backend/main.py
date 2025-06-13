@@ -31,6 +31,9 @@ from .routes import (
 )
 from .utils.logging_config import get_logger, setup_logging
 
+from . import schemas
+from .services import auth
+
 load_dotenv()
 
 # Configure centralized logging
@@ -86,7 +89,7 @@ app.include_router(guardrails.router, prefix="/api")
 app.include_router(model_servers.router, prefix="/api")
 app.include_router(llama_stack.router, prefix="/api")
 app.include_router(chat_sessions.router, prefix="/api")
-
+app.include_router(auth.auth_router)
 
 # Serve React App (frontend)
 class SPAStaticFiles(StaticFiles):
