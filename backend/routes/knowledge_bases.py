@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import models, schemas
 from ..api.llamastack import client
 from ..database import get_db
+from ..services.auth import RoleChecker
+from ..models import RoleEnum
 from ..utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +33,8 @@ router = APIRouter(prefix="/knowledge_bases", tags=["knowledge_bases"])
 
 
 @router.post(
-    "/", response_model=schemas.KnowledgeBaseRead, status_code=status.HTTP_201_CREATED
+    "/", response_model=schemas.KnowledgeBaseRead, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))]
 )
 async def create_knowledge_base(
     kb: schemas.KnowledgeBaseCreate, db: AsyncSession = Depends(get_db)
@@ -69,7 +72,7 @@ async def create_knowledge_base(
     return db_kb
 
 
-@router.get("/", response_model=List[schemas.KnowledgeBaseRead])
+@router.get("/", response_model=List[schemas.KnowledgeBaseRead], dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def read_knowledge_bases(db: AsyncSession = Depends(get_db)):
     """
     Retrieve all knowledge bases from the database.
@@ -87,7 +90,7 @@ async def read_knowledge_bases(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.get("/{vector_db_name}", response_model=schemas.KnowledgeBaseRead)
+@router.get("/{vector_db_name}", response_model=schemas.KnowledgeBaseRead, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def read_knowledge_base(vector_db_name: str, db: AsyncSession = Depends(get_db)):
     """
     Retrieve a specific knowledge base by its vector database name.
@@ -116,7 +119,7 @@ async def read_knowledge_base(vector_db_name: str, db: AsyncSession = Depends(ge
     return kb
 
 
-@router.delete("/{vector_db_name}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{vector_db_name}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def delete_knowledge_base(
     vector_db_name: str, db: AsyncSession = Depends(get_db)
 ):
@@ -170,7 +173,7 @@ async def delete_knowledge_base(
     return None
 
 
-@router.post("/sync", response_model=List[schemas.KnowledgeBaseRead])
+@router.post("/sync", response_model=List[schemas.KnowledgeBaseRead], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def sync_knowledge_bases_endpoint(db: AsyncSession = Depends(get_db)):
     """
     Synchronize knowledge bases between the database and LlamaStack.

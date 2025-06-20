@@ -21,6 +21,8 @@ from sqlalchemy.future import select
 from .. import models, schemas
 from ..api.llamastack import client
 from ..database import get_db
+from ..services.auth import RoleChecker
+from ..models import RoleEnum
 from ..utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -29,7 +31,8 @@ router = APIRouter(prefix="/mcp_servers", tags=["mcp_servers"])
 
 
 @router.post(
-    "/", response_model=schemas.MCPServerRead, status_code=status.HTTP_201_CREATED
+    "/", response_model=schemas.MCPServerRead, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))]
 )
 async def create_mcp_server(
     server: schemas.MCPServerCreate, db: AsyncSession = Depends(get_db)
@@ -65,7 +68,7 @@ async def create_mcp_server(
     return db_server
 
 
-@router.get("/", response_model=List[schemas.MCPServerRead])
+@router.get("/", response_model=List[schemas.MCPServerRead], dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def read_mcp_servers(db: AsyncSession = Depends(get_db)):
     """
     Retrieve all registered MCP servers.
@@ -83,7 +86,7 @@ async def read_mcp_servers(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.get("/{toolgroup_id}", response_model=schemas.MCPServerRead)
+@router.get("/{toolgroup_id}", response_model=schemas.MCPServerRead, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def read_mcp_server(toolgroup_id: str, db: AsyncSession = Depends(get_db)):
     """
     Retrieve a specific MCP server by its tool group identifier.
@@ -110,7 +113,7 @@ async def read_mcp_server(toolgroup_id: str, db: AsyncSession = Depends(get_db))
     return server
 
 
-@router.put("/{toolgroup_id}", response_model=schemas.MCPServerRead)
+@router.put("/{toolgroup_id}", response_model=schemas.MCPServerRead, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def update_mcp_server(
     toolgroup_id: str,
     server: schemas.MCPServerCreate,
@@ -154,7 +157,7 @@ async def update_mcp_server(
     return db_server
 
 
-@router.delete("/{toolgroup_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{toolgroup_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def delete_mcp_server(toolgroup_id: str, db: AsyncSession = Depends(get_db)):
     """
     Delete an MCP server configuration.
@@ -308,7 +311,7 @@ async def sync_mcp_servers(db: AsyncSession):
         raise Exception(f"Failed to sync MCP servers: {str(e)}")
 
 
-@router.post("/sync", response_model=List[schemas.MCPServerRead])
+@router.post("/sync", response_model=List[schemas.MCPServerRead], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def sync_mcp_servers_endpoint(db: AsyncSession = Depends(get_db)):
     """
     Synchronize MCP servers with LlamaStack tool discovery.

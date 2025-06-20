@@ -33,6 +33,10 @@ from .. import models
 from ..api.llamastack import client
 from .chat import Chat
 from .virtual_assistants import read_virtual_assistant
+from ..services.auth import RoleChecker, get_current_user
+from ..services.agent_service import AgentService
+from ..models import RoleEnum
+from .. import schemas
 
 
 class Message(BaseModel):
@@ -74,10 +78,10 @@ router = APIRouter(prefix="/llama_stack", tags=["llama_stack"])
 
 
 # Initialize LlamaStack client
-@router.get("/llms", response_model=List[Dict[str, Any]])
+@router.get("/llms", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_llms():
     """
-    Retrieve all available Large Language Models from LlamaStack.
+    Retrieve all available Large Language Models from LlamaStack (Admin only).
 
     Fetches the complete list of LLM models available in the LlamaStack instance,
     filtering for models with 'llm' API type and formatting them for frontend
@@ -135,10 +139,10 @@ async def get_llms():
         )
 
 
-@router.get("/knowledge_bases", response_model=List[Dict[str, Any]])
+@router.get("/knowledge_bases", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_knowledge_bases():
     """
-    Retrieve all available knowledge bases from LlamaStack vector databases.
+    Retrieve all available knowledge bases from LlamaStack vector databases (Admin only).
 
     Fetches the complete list of vector databases available in LlamaStack,
     which represent knowledge bases that can be used for RAG (Retrieval
@@ -168,10 +172,10 @@ async def get_knowledge_bases():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tools", response_model=List[Dict[str, Any]])
+@router.get("/tools", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_tools():
     """
-    Retrieve all available MCP (Model Context Protocol) servers from LlamaStack.
+    Retrieve all available MCP (Model Context Protocol) servers from LlamaStack (Admin only).
 
     Fetches tool groups that represent MCP servers configured in LlamaStack.
     These servers provide external tools and capabilities that can be used
@@ -201,10 +205,10 @@ async def get_tools():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/safety_models", response_model=List[Dict[str, Any]])
+@router.get("/safety_models", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_safety_models():
     """
-    Retrieve all available safety models from LlamaStack.
+    Retrieve all available safety models from LlamaStack (Admin only).
 
     Fetches models specifically designed for content safety and moderation.
     These models can be used to filter harmful content, detect inappropriate
@@ -235,10 +239,10 @@ async def get_safety_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/embedding_models", response_model=List[Dict[str, Any]])
+@router.get("/embedding_models", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_embedding_models():
     """
-    Retrieve all available embedding models from LlamaStack.
+    Retrieve all available embedding models from LlamaStack (Admin only).
 
     Fetches models designed for generating vector embeddings from text.
     These models are used for knowledge base indexing, semantic search,
@@ -269,10 +273,10 @@ async def get_embedding_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/shields", response_model=List[Dict[str, Any]])
+@router.get("/shields", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_shields():
     """
-    Retrieve all available safety shields from LlamaStack.
+    Retrieve all available safety shields from LlamaStack (Admin only).
 
     Fetches shield configurations used for content filtering and safety
     enforcement. Shields provide pre-configured safety policies that can
@@ -302,10 +306,10 @@ async def get_shields():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/providers", response_model=List[Dict[str, Any]])
+@router.get("/providers", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_providers():
     """
-    Retrieve all available providers from LlamaStack.
+    Retrieve all available providers from LlamaStack (Admin only).
 
     Fetches the complete list of providers configured in LlamaStack,
     including their configurations and supported APIs. Providers are
@@ -361,14 +365,17 @@ class ChatRequest(BaseModel):
 async def chat(
     request: ChatRequest,
     background_task: BackgroundTasks,
+    current_user: schemas.UserRead = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Main chat endpoint for streaming conversations with LlamaStack agents.
+    Main chat endpoint for streaming conversations with LlamaStack agents (with user access verification).
 
     Handles real-time chat interactions by streaming responses from LlamaStack
     agents while maintaining session state. Automatically saves session metadata
     to the database for UI features like conversation history sidebars.
+    
+    Users can only chat with agents they have been assigned.
 
     The endpoint validates the virtual assistant exists, requires a session ID,
     and streams responses in Server-Sent Events format. Session metadata is
@@ -377,6 +384,7 @@ async def chat(
     Args:
         request: ChatRequest containing assistant ID, messages, and session info
         background_task: FastAPI background tasks for async metadata saving
+        current_user: Current authenticated user
         db: Database session for metadata operations
 
     Returns:
@@ -385,11 +393,26 @@ async def chat(
     Raises:
         HTTPException:
             - 404 if virtual assistant not found in LlamaStack
+            - 403 if user doesn't have access to the agent
             - 400 if session ID is missing
             - 500 for internal server errors during chat processing
     """
     try:
-        log.info(f"Received request: {request.model_dump()}")
+        log.info(f"Received chat request from user {current_user.id}: {request.model_dump()}")
+
+        # Verify user has access to this agent FIRST
+        has_access = await AgentService.verify_user_agent_access_complete(
+            agent_id=request.virtualAssistantId,
+            user_id=str(current_user.id),
+            user_role=current_user.role.value,
+            db=db
+        )
+        
+        if not has_access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have access to this agent"
+            )
 
         # Get the agent directly from LlamaStack
         try:
@@ -418,7 +441,7 @@ async def chat(
                 ),
             )
 
-        log.info(f"Using agent: {agent_id} with session: {session_id}")
+        log.info(f"User {current_user.id} chatting with agent: {agent_id} in session: {session_id}")
 
         # Create stateless Chat instance (no longer needs assistant or session_state)
         chat = Chat(log)

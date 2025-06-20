@@ -23,6 +23,8 @@ from sqlalchemy.future import select
 from .. import models, schemas
 from ..api.llamastack import client
 from ..database import get_db
+from ..services.auth import RoleChecker
+from ..models import RoleEnum
 from ..utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +33,8 @@ router = APIRouter(prefix="/model_servers", tags=["Model Servers"])
 
 
 @router.post(
-    "/", response_model=schemas.ModelServerRead, status_code=status.HTTP_201_CREATED
+    "/", response_model=schemas.ModelServerRead, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))]
 )
 async def create_model_server(
     server: schemas.ModelServerCreate, db: AsyncSession = Depends(get_db)
@@ -69,7 +72,7 @@ async def create_model_server(
     return model_server
 
 
-@router.get("/", response_model=List[schemas.ModelServerRead])
+@router.get("/", response_model=List[schemas.ModelServerRead], dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def read_model_servers(db: AsyncSession = Depends(get_db)):
     """
     Retrieve all registered model servers.
@@ -87,7 +90,7 @@ async def read_model_servers(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.get("/{server_id}", response_model=schemas.ModelServerRead)
+@router.get("/{server_id}", response_model=schemas.ModelServerRead, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def read_model_server(server_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Retrieve a specific model server by its unique identifier.
@@ -113,7 +116,7 @@ async def read_model_server(server_id: UUID, db: AsyncSession = Depends(get_db))
     return server
 
 
-@router.put("/{server_id}", response_model=schemas.ModelServerRead)
+@router.put("/{server_id}", response_model=schemas.ModelServerRead, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def update_mcp_server(
     server_id: UUID,
     server: schemas.ModelServerCreate,
@@ -157,7 +160,7 @@ async def update_mcp_server(
     return db_server
 
 
-@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def delete_model_server(server_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Delete a model server configuration.
@@ -301,7 +304,7 @@ async def sync_model_servers(db: AsyncSession):
         raise Exception(f"Failed to sync model servers: {str(e)}")
 
 
-@router.post("/sync", response_model=List[schemas.ModelServerRead])
+@router.post("/sync", response_model=List[schemas.ModelServerRead], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def sync_model_servers_endpoint(db: AsyncSession = Depends(get_db)):
     """
     Synchronize model servers with LlamaStack model providers.

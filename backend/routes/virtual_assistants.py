@@ -7,14 +7,20 @@ different models, tools, knowledge bases, and safety shields.
 """
 
 from typing import List
+from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from llama_stack_client.lib.agents.agent import AgentUtils
 
 from .. import schemas
 from ..api.llamastack import client
 from ..utils.logging_config import get_logger
 from ..virtual_agents.agent_model import VirtualAgent
+from ..services.auth import RoleChecker, get_current_user
+from ..models import User as UserModel, RoleEnum
+from sqlalchemy.future import select
+from ..services.agent_service import AgentService
+from ..database import get_db
 
 logger = get_logger(__name__)
 
@@ -43,8 +49,12 @@ def get_strategy(temperature, top_p):
     "/",
     response_model=schemas.VirtualAssistantRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RoleChecker([RoleEnum.admin]))]
 )
-async def create_virtual_assistant(va: schemas.VirtualAssistantCreate):
+async def create_virtual_assistant(
+    va: schemas.VirtualAssistantCreate,
+    current_admin: schemas.UserRead = Depends(get_current_user)
+):
     """
     Create a new virtual assistant agent in LlamaStack.
 
@@ -88,6 +98,17 @@ async def create_virtual_assistant(va: schemas.VirtualAssistantCreate):
             output_shields=va.output_shields,
         )
         agent_config["name"] = va.name
+        
+        # Add template metadata for admin-created agents
+        if "metadata" not in agent_config:
+            agent_config["metadata"] = {}
+            
+        agent_config["metadata"].update({
+            "is_template": True,
+            "created_by": str(current_admin.id),
+            "created_by_email": current_admin.email,
+            "created_at": datetime.now().isoformat()
+        })
 
         agentic_system_create_response = client.agents.create(
             agent_config=agent_config,
@@ -154,10 +175,10 @@ def to_va_response(agent: VirtualAgent):
     )
 
 
-@router.get("/", response_model=List[schemas.VirtualAssistantRead])
+@router.get("/", response_model=List[schemas.VirtualAssistantRead], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def get_virtual_assistants():
     """
-    Retrieve all virtual assistants from LlamaStack.
+    Retrieve all virtual assistants from LlamaStack (Admin only).
 
     Returns:
         List of all virtual assistants configured in the system
@@ -170,10 +191,10 @@ async def get_virtual_assistants():
     return response_list
 
 
-@router.get("/{va_id}", response_model=schemas.VirtualAssistantRead)
+@router.get("/{va_id}", response_model=schemas.VirtualAssistantRead, dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def read_virtual_assistant(va_id: str):
     """
-    Retrieve a specific virtual assistant by ID.
+    Retrieve a specific virtual assistant by ID (Admin only).
 
     Args:
         va_id: The unique identifier of the virtual assistant
@@ -193,10 +214,10 @@ async def read_virtual_assistant(va_id: str):
 #     pass
 
 
-@router.delete("/{va_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{va_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def delete_virtual_assistant(va_id: str):
     """
-    Delete a virtual assistant from LlamaStack.
+    Delete a virtual assistant from LlamaStack (Admin only).
 
     Args:
         va_id: The unique identifier of the virtual assistant to delete
@@ -206,3 +227,83 @@ async def delete_virtual_assistant(va_id: str):
     """
     client.agents.delete(agent_id=va_id)
     return None
+
+
+@router.get("/templates", response_model=List[schemas.AgentTemplateResponse], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
+async def get_agent_templates(db=Depends(get_db)):
+    """
+    Get all available agent templates for assignment (Admin only).
+
+    This endpoint returns all virtual assistants that can be used as templates
+    for assignment to users. Only admin users can access this endpoint.
+    
+    Uses database-based approach for efficiency: queries admin users and extracts
+    template agents from their agent_ids JSON column.
+
+    Returns:
+        List[schemas.AgentTemplateResponse]: List of agent templates with metadata
+
+    Raises:
+        HTTPException: If retrieval fails
+    """
+    try:
+        
+        # Get all admin users
+        result = await db.execute(
+            select(UserModel).filter(UserModel.role == RoleEnum.admin)
+        )
+        admin_users = result.scalars().all()
+        
+        # Extract all template agents from admin users
+        templates = []
+        template_ids_seen = set()  # Avoid duplicates
+        
+        for admin_user in admin_users:
+            if not admin_user.agent_ids:
+                continue
+                
+            # Normalize agent_ids to ensure consistent format
+            normalized_agents = AgentService.normalize_agent_ids(admin_user.agent_ids)
+            
+            for agent_assignment in normalized_agents:
+                # Only include template agents, avoid duplicates
+                if (agent_assignment.get("type") == "template" and 
+                    agent_assignment["agent_id"] not in template_ids_seen):
+                    
+                    template_ids_seen.add(agent_assignment["agent_id"])
+                    
+                    # Try to get agent name from LlamaStack for display
+                    try:
+                        agent = client.agents.retrieve(agent_id=agent_assignment["agent_id"])
+                        agent_name = agent.agent_config.get("name", "Unnamed Assistant")
+                        agent_model = agent.agent_config.get("model", "Unknown")
+                        tool_count = len(agent.agent_config.get("toolgroups", []))
+                    except Exception as e:
+                        # Fallback if agent doesn't exist in LlamaStack
+                        logger.warning(f"Could not retrieve agent {agent_assignment['agent_id']} from LlamaStack: {e}")
+                        agent_name = f"Template {agent_assignment['agent_id'][:8]}..."
+                        agent_model = "Unknown"
+                        tool_count = 0
+                    
+                    template = schemas.AgentTemplateResponse(
+                        agent_id=agent_assignment["agent_id"],
+                        name=agent_name,
+                        description=f"Model: {agent_model}, Tools: {tool_count}",
+                        created_by=agent_assignment.get("assigned_by", "unknown"),
+                        created_by_email=admin_user.email,
+                        created_at=agent_assignment.get("assigned_at", "Unknown")
+                    )
+                    templates.append(template)
+        
+        # Sort by name for consistent ordering
+        templates.sort(key=lambda x: x.name)
+        
+        logger.info(f"Retrieved {len(templates)} agent templates from database")
+        return templates
+
+    except Exception as e:
+        logger.error(f"Error retrieving agent templates from database: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve agent templates: {str(e)}"
+        )

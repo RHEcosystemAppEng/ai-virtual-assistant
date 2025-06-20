@@ -14,6 +14,8 @@ from sqlalchemy.future import select
 from .. import models
 from ..api.llamastack import client
 from ..database import get_db
+from ..services.auth import RoleChecker
+from ..models import RoleEnum
 from ..utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -21,7 +23,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/tools", tags=["tools"])
 
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("/", response_model=List[Dict[str, Any]], dependencies=[Depends(RoleChecker([RoleEnum.admin, RoleEnum.ops]))])
 async def get_all_tool_groups(db: AsyncSession = Depends(get_db)):
     """
     Get all available tool groups from both MCP servers and LlamaStack builtin tools.

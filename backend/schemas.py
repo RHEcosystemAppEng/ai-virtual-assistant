@@ -33,18 +33,28 @@ class ToolTypeEnumSchema(str, enum.Enum):
 
 class RoleEnum(str, enum.Enum):
     admin = "admin"
-    devops = "devops"
+    ops = "ops"
     user = "user"
 
 
+class AgentAssignment(BaseModel):
+    """Schema for individual agent assignments in user.agent_ids JSON field."""
+    agent_id: str
+    type: str  # "template" or "clone"
+    assigned_by: Optional[str] = None  # UUID of admin who assigned
+    assigned_at: Optional[str] = None  # ISO timestamp
+    base_template_id: Optional[str] = None  # For cloned agents
+
+
 class UserBase(BaseModel):
-    username: str
+    username: Optional[str] = None
     email: EmailStr
     role: RoleEnum
+    agent_ids: Optional[List[Union[str, AgentAssignment]]] = []  # Backward compatible
 
 
 class UserCreate(UserBase):
-    password: str
+    password: Optional[str] = None
 
 
 class UserRead(UserBase):
@@ -54,6 +64,29 @@ class UserRead(UserBase):
 
     class Config:
         orm_mode = True
+
+
+class UserUpdate(BaseModel):
+    role: Optional[RoleEnum] = None
+
+
+class AgentAssignmentRequest(BaseModel):
+    agent_template_ids: List[str]  # Base agent configurations to clone and assign
+
+
+class UserProfileResponse(UserRead):
+    """Response schema for user profile endpoint"""
+    pass
+
+
+class AgentTemplateResponse(BaseModel):
+    """Response schema for agent template listing."""
+    agent_id: str
+    name: str
+    description: Optional[str] = None
+    created_by: str  # Admin user ID who created it
+    created_by_email: str  # Admin email for display
+    created_at: str  # ISO timestamp
 
 
 # MCPServer Schemas

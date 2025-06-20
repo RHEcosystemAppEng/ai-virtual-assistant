@@ -46,6 +46,8 @@ spec:
             - -openshift-service-account=ai-virtual-assistant-proxy-sa
             - -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
             - -skip-auth-regex=^/metrics
+            - -pass-user-headers=true
+            - -set-xauthrequest=true
           image: quay.io/openshift/origin-oauth-proxy:4.17
           imagePullPolicy: IfNotPresent
           ports:

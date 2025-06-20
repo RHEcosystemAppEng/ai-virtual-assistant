@@ -2,7 +2,7 @@
 Guardrails API endpoints for managing AI safety and content filtering rules.
 
 This module provides CRUD operations for guardrails that define safety constraints
-and content filtering rules for AI virtual assistants.
+and content filtering rules for AI virtual assistants. All operations require admin access.
 """
 
 from typing import List
@@ -14,18 +14,21 @@ from sqlalchemy.future import select
 
 from .. import models, schemas
 from ..database import get_db
+from ..services.auth import RoleChecker
+from ..models import RoleEnum
 
 router = APIRouter(prefix="/guardrails", tags=["guardrails"])
 
 
 @router.post(
-    "/", response_model=schemas.GuardrailRead, status_code=status.HTTP_201_CREATED
+    "/", response_model=schemas.GuardrailRead, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RoleChecker([RoleEnum.admin]))]
 )
 async def create_guardrail(
     item: schemas.GuardrailCreate, db: AsyncSession = Depends(get_db)
 ):
     """
-    Create a new guardrail with specified rules and configuration.
+    Create a new guardrail with specified rules and configuration (Admin only).
 
     Args:
         item: Guardrail data containing name and rules
@@ -41,10 +44,10 @@ async def create_guardrail(
     return db_item
 
 
-@router.get("/", response_model=List[schemas.GuardrailRead])
+@router.get("/", response_model=List[schemas.GuardrailRead], dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def read_guardrails(db: AsyncSession = Depends(get_db)):
     """
-    Retrieve all guardrails from the database.
+    Retrieve all guardrails from the database (Admin only).
 
     Args:
         db: Database session dependency
@@ -56,10 +59,10 @@ async def read_guardrails(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.get("/{guardrail_id}", response_model=schemas.GuardrailRead)
+@router.get("/{guardrail_id}", response_model=schemas.GuardrailRead, dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def read_guardrail(guardrail_id: UUID, db: AsyncSession = Depends(get_db)):
     """
-    Retrieve a specific guardrail by its ID.
+    Retrieve a specific guardrail by its ID (Admin only).
 
     Args:
         guardrail_id: UUID of the guardrail to retrieve
@@ -80,14 +83,14 @@ async def read_guardrail(guardrail_id: UUID, db: AsyncSession = Depends(get_db))
     return item
 
 
-@router.put("/{guardrail_id}", response_model=schemas.GuardrailRead)
+@router.put("/{guardrail_id}", response_model=schemas.GuardrailRead, dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def update_guardrail(
     guardrail_id: UUID,
     item: schemas.GuardrailCreate,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Update an existing guardrail's rules and configuration.
+    Update an existing guardrail's rules and configuration (Admin only).
 
     Args:
         guardrail_id: UUID of the guardrail to update
@@ -113,10 +116,10 @@ async def update_guardrail(
     return db_item
 
 
-@router.delete("/{guardrail_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{guardrail_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(RoleChecker([RoleEnum.admin]))])
 async def delete_guardrail(guardrail_id: UUID, db: AsyncSession = Depends(get_db)):
     """
-    Delete a guardrail from the database.
+    Delete a guardrail from the database (Admin only).
 
     Args:
         guardrail_id: UUID of the guardrail to delete
