@@ -36,6 +36,9 @@ import {
   createChatSession,
   deleteChatSession,
   ChatSessionSummary,
+  TextContentItem,
+  ImageContentItem,
+  InterleavedContent,
 } from '@/services/chat-sessions';
 import { useMutation } from '@tanstack/react-query';
 import botAvatar from "../assets/img/bot-avatar.svg";
@@ -86,6 +89,9 @@ export function Chat() {
     isLoading,
     loadSession,
     sessionId,
+    attachedFiles,
+    handleAttach,
+    clearAttachedFiles,
   } = useChat(selectedAgent || 'default', {
     onError: (error: Error) => {
       console.error('Chat error:', error);
@@ -99,6 +105,22 @@ export function Chat() {
     },
   });
 
+  const contentToText = (content: InterleavedContent): string => {
+    if (content instanceof Array) {
+      return content.map(m => contentToText(m)).join('\n');
+    }
+
+    if (content.type === 'text') {
+      return content.text;
+    }
+
+    if (content.type === 'image') {
+      // TODO: Display image contents
+    }
+
+    return '';
+  }
+
   // Convert our chat messages to PatternFly format
   const messages = React.useMemo(
     () =>
@@ -106,7 +128,7 @@ export function Chat() {
         (msg): MessageProps => ({
           id: msg.id,
           role: msg.role === 'user' ? 'user' : 'bot',
-          content: msg.content,
+          content: contentToText(msg.content),
           name: msg.role === 'user' ? 'You' : 'Assistant',
           timestamp: msg.timestamp.toLocaleString(),
           avatar: msg.role === 'user' ? userAvatar : botAvatar,
@@ -383,15 +405,20 @@ export function Chat() {
     console.log('Current session ID:', sessionId);
     if (typeof message === 'string' && message.trim() && selectedAgent) {
       console.log('Sending message via append:', message, 'using session:', sessionId);
+      let contents: Array<TextContentItem | ImageContentItem> = [];
+      contents.push({type: 'text', text: message});
+      for (const file of attachedFiles) {
+        contents.push({type: 'image', image: {data: file}});
+      }
       // Add the message to the chat
       append({
         role: 'user',
-        content: message.toString(),
+        content: contents,
       });
+      clearAttachedFiles();
     } else {
       console.log('Message not sent - conditions not met:', {
         messageType: typeof message,
-        messageLength: typeof message === 'string' ? message.trim().length : 0,
         selectedAgent: selectedAgent,
       });
     }
@@ -477,6 +504,7 @@ export function Chat() {
                 isSendButtonDisabled={isLoading || !selectedAgent}
                 value={input}
                 onChange={handleInputChange}
+                handleAttach={handleAttach}
               />
               <ChatbotFootnote {...footnoteProps} />
             </ChatbotFooter>

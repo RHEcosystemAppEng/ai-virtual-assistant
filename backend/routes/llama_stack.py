@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from llama_stack_client.types import InterleavedContent, InterleavedContentItem
 from pydantic import BaseModel
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,7 @@ class Message(BaseModel):
     """
 
     role: Literal["user", "assistant", "system"]
-    content: str
+    content: InterleavedContent
 
 
 class VAChatMessage(BaseModel):
@@ -485,13 +486,20 @@ async def save_session_metadata(
     try:
         # Generate title from first user message
         title = "New Chat"
+        title_set = False
         if messages:
+            txt = ""
             # Find first user message for title
             for msg in messages:
                 if msg.role == "user":
-                    content = msg.content
-                    title = content[:50] + "..." if len(content) > 50 else content
-                    break
+                    for item in msg.content:
+                        if hasattr(item, "text"):
+                            txt = item.text
+                            title_set = True
+                            break
+                    title = txt[:50] + "..." if len(txt) > 50 else txt[:50]
+                    if title_set:
+                        break
 
         # Get agent name
         agent_name = "Unknown Agent"

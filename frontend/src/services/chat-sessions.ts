@@ -1,5 +1,22 @@
 import { CHAT_SESSIONS_API_ENDPOINT } from '@/config/api';
 
+type ImageContentItemImage = {
+  data?: string,
+  uri?: string,
+};
+
+export type ImageContentItem = {
+  image: ImageContentItemImage
+  type: 'image',
+};
+
+export type TextContentItem = {
+  text: string,
+  type: 'text',
+};
+
+export type InterleavedContent = TextContentItem | ImageContentItem | Array<TextContentItem | ImageContentItem>;
+
 export interface ChatSessionSummary {
   id: string;
   title: string;
@@ -15,7 +32,7 @@ export interface ChatSessionDetail {
   agent_id: string;
   messages: Array<{
     role: 'user' | 'assistant';
-    content: string;
+    content: InterleavedContent;
   }>;
   created_at: string;
   updated_at: string;
