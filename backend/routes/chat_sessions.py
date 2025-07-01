@@ -17,6 +17,7 @@ conversation state across multiple interactions.
 """
 
 import logging
+import json
 from datetime import datetime
 from typing import List, Optional
 
@@ -200,14 +201,20 @@ async def get_chat_session(session_id: str, agent_id: str) -> dict:
                 if hasattr(turn, "input_messages"):
                     for msg in turn.input_messages:
                         if hasattr(msg, "content"):
-                            messages.append({"role": "user", "content": msg.content})
+                            # The content of each message is a list, containing one or more
+                            # InterleavedContent objects. For now, only send back the
+                            # TextContentItem objects.
+                            # TODO: Serialize and send back ImageContentItem objects.
+                            messages.append({"role": "user", "content": list(map(lambda m: m.__dict__, filter(lambda m: hasattr(m, 'text'), msg.content)))})
 
                 # Add assistant response
                 if hasattr(turn, "output_message") and hasattr(
                     turn.output_message, "content"
                 ):
                     messages.append(
-                        {"role": "assistant", "content": turn.output_message.content}
+                        # For now, the output message content is always a string - wrap it explicitly
+                        # in a TextContentItem object to simplify processing on the frontend.
+                        {"role": "assistant", "content": [{"type": "text", "text": turn.output_message.content}]}
                     )
 
             # Get agent name
