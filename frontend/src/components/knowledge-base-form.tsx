@@ -79,6 +79,7 @@ export function KnowledgeBaseForm({
   // State for URL inputs (special case since it's an array)
   const [urlInputs, setUrlInputs] = useState<string[]>(['']);
   const [urlErrors, setUrlErrors] = useState<(string | undefined)[]>(['']);
+  const [defaultVectorDbName, setDefaultVectorDbName] = useState<string>('');
 
   // State for configuration preview
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
@@ -226,6 +227,10 @@ export function KnowledgeBaseForm({
         finalValue = value;
       }
 
+      if (finalValue.vector_db_name.trim() === '') {
+        finalValue.vector_db_name = defaultVectorDbName;
+      }
+
       // Remove the individual source fields from the final value
       const {
         s3_access_key_id: _s3_access_key_id,
@@ -313,6 +318,17 @@ export function KnowledgeBaseForm({
     return JSON.stringify(previewConfig, null, 2);
   };
 
+  const buildDefaultVectorDbName = () => {
+    const name = form.getFieldValue('name')?.trim() || '';
+    const version = form.getFieldValue('version')?.trim() || '';
+    const env = form.getFieldValue('source')?.trim() || '';
+
+    const parts = [name, version, env].filter(Boolean);
+    const dbname = parts.join('-').toLowerCase();
+
+    setDefaultVectorDbName(dbname);
+  };
+
   return (
     <Form
       onSubmit={(e) => {
@@ -332,7 +348,10 @@ export function KnowledgeBaseForm({
               isRequired
               id="kb-form-name"
               value={field.state.value}
-              onChange={(_e, v) => field.handleChange(v)}
+              onChange={(_e, v) => {
+                field.handleChange(v);
+                buildDefaultVectorDbName();
+              }}
               validated={
                 !field.state.meta.isTouched
                   ? 'default'
@@ -354,7 +373,10 @@ export function KnowledgeBaseForm({
               isRequired
               id="kb-form-version"
               value={field.state.value}
-              onChange={(_e, v) => field.handleChange(v)}
+              onChange={(_e, v) => {
+                field.handleChange(v);
+                buildDefaultVectorDbName();
+              }}
               validated={
                 !field.state.meta.isTouched
                   ? 'default'
@@ -457,24 +479,14 @@ export function KnowledgeBaseForm({
       </form.Field>
       <form.Field
         name="vector_db_name"
-        validators={{
-          onChange: ({ value }) => (!value ? 'Vector DB Name is required' : undefined),
-        }}
       >
         {(field) => (
-          <FormGroup label="Vector DB Name" isRequired fieldId="kb-form-vector-db-name">
+          <FormGroup label="Vector DB Name" fieldId="kb-form-vector-db-name">
             <TextInput
-              isRequired
               id="kb-form-vector-db-name"
               value={field.state.value}
+              placeholder={defaultVectorDbName}
               onChange={(_e, v) => field.handleChange(v)}
-              validated={
-                !field.state.meta.isTouched
-                  ? 'default'
-                  : field.state.meta.errors.length > 0
-                    ? 'error'
-                    : 'success'
-              }
             />
           </FormGroup>
         )}
@@ -497,6 +509,7 @@ export function KnowledgeBaseForm({
                 if (value === 'URL') {
                   setUrlInputs(['']);
                 }
+                buildDefaultVectorDbName();
               }}
               aria-label="Select Source"
               validated={
